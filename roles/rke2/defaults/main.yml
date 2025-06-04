@@ -1,5 +1,5 @@
 ---
-rke2_kubernetes_api_server_host: "http://10.31.44.100"
+rke2_kubernetes_api_server_host: "10.31.44.100"
 rke2_tarball_install_dir: "/usr/local"
 rke2_install_local_tarball_path: ""
 rke2_install_tarball_url: "https://github.com/rancher/rke2/releases/download/v1.33.1%2Brke2r1/rke2.linux-amd64.tar.gz"
