@@ -1,9 +1,9 @@
 ---
-rke2_kubernetes_api_server_host: ""
+rke2_kubernetes_api_server_host: "http://10.31.44.100"
 rke2_tarball_install_dir: "/usr/local"
 rke2_install_local_tarball_path: ""
-rke2_install_tarball_url: ""
-rke2_images_urls: []
+rke2_install_tarball_url: "https://github.com/rancher/rke2/releases/download/v1.33.1%2Brke2r1/rke2.linux-amd64.tar.gz"
+rke2_images_urls: ["https://github.com/rancher/rke2/releases/download/v1.33.1%2Brke2r1/rke2-images.linux-amd64.tar.zst"]
 rke2_images_local_tarball_path: []
 rke2_channel: "stable"
 rke2_audit_policy_config_file_path: ""
@@ -12,23 +12,8 @@ rke2_pod_security_admission_config_file_path: ""
 rke2_add_iptables_rules: false
 rke2_manifest_config_directory: ""
 rke2_manifest_config_post_run_directory: ""
-rke2_force_tarball_install: false
+rke2_force_tarball_install: true
 rke2_install_version: ""
-rke2_common_yum_repo:
-  name: rancher-rke2-common
-  description: "Rancher RKE2 Common Latest"
-  baseurl: "https://rpm.rancher.io/rke2/{{ rke2_channel }}/common/centos/$releasever/noarch"
-  gpgcheck: true
-  gpgkey: "https://rpm.rancher.io/public.key"
-  enabled: true
-
-rke2_versioned_yum_repo:
-  name: "rancher-rke2-v{{ rke2_version_majmin }}"  # noqa jinja[spacing]
-  description: "Rancher RKE2 Version"
-  baseurl: "https://rpm.rancher.io/rke2/{{ rke2_channel }}/{{ rke2_version_majmin }}/centos/$releasever/$basearch"
-  gpgcheck: true
-  gpgkey: "https://rpm.rancher.io/public.key"
-  enabled: true
 rke2_kubelet_node_name:
   - "nodeNameNotFound"
 rke2_config: {}
@@ -39,6 +24,8 @@ rke2_installed: false
 rke2_version_changed: false
 rke2_reboot: false
 rke2_version_majmin: ""
-rke2_version_rpm: ""
 rke2_package_state: "installed"
 rke2_systemd_env_config_file_path: ""
+rke2_cluster_cidr: "10.42.0.0/16"
+rke2_service_cidr: "10.43.0.0/16"
+rke2_cni: "canal"  # Options: canal, cilium, calico, flannel, none

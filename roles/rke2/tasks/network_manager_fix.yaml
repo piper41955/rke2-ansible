@@ -11,7 +11,7 @@
       [keyfile]
       unmanaged-devices=interface-name:cali*;interface-name:flannel*
     create: true
-    mode: 0600
+    mode: '0600'
   when: ansible_facts.services["NetworkManager.service"] is defined
 
 - name: Does rke2-canal.conf exist

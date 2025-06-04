@@ -25,7 +25,7 @@
         src: /usr/share/rke2/rke2-cis-sysctl.conf
         dest: /etc/sysctl.d/60-rke2-cis.conf
         remote_src: true
-        mode: 0600
+        mode: '0600'
       register: sysctl_operation_yum
       when:
         - install_method == "rpm"
@@ -39,7 +39,7 @@
         src: /usr/local/share/rke2/rke2-cis-sysctl.conf
         dest: /etc/sysctl.d/60-rke2-cis.conf
         remote_src: true
-        mode: 0600
+        mode: '0600'
       register: sysctl_operation_tarball
       when:
         - install_method == "tarball"

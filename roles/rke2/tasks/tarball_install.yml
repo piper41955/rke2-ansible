@@ -52,7 +52,7 @@
 
 - name: Get version of provided tarball
   when:
-    - (rke2_install_local_tarball_path != "" or rke2_install_tarball_url != "")
+    - ("" or rke2_install_tarball_url != "")
   block:
     - name: Unarchive tarball into temp location
       ansible.builtin.unarchive:

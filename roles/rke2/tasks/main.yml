@@ -1,4 +1,6 @@
 ---
+- name: Include task file add_containerd.yml
+  ansible.builtin.include_tasks: add_containerd.yml
 
 - name: Populate service facts
   ansible.builtin.service_facts: {}
@@ -11,19 +13,9 @@
   ansible.builtin.set_fact:
     install_method: tarball
   when: |-
-      ((ansible_facts['os_family'] != 'RedHat' and ansible_facts['os_family'] != 'Rocky') or
       rke2_install_tarball_url != "" or
       rke2_install_local_tarball_path != "" or
-      rke2_force_tarball_install|bool)
-
-- name: Set for install method of rpm
-  ansible.builtin.set_fact:
-    install_method: rpm
-  when:
-    - ansible_os_family == 'RedHat' or ansible_os_family == 'Rocky'
-    - rke2_install_local_tarball_path == ""
-    - rke2_install_tarball_url == ""
-    - not rke2_force_tarball_install|bool
+      rke2_force_tarball_install|bool
 
 - name: Set as server
   ansible.builtin.set_fact:
@@ -75,11 +67,6 @@
   ansible.builtin.include_tasks: tarball_install.yml
   when:
     - install_method == "tarball"
-
-- name: RPM Install
-  ansible.builtin.include_tasks: rpm_install.yml
-  when:
-    - install_method == "rpm"
 
 - name: Set rke2 configuration files
   ansible.builtin.include_tasks: configure_rke2.yml

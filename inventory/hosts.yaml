@@ -1,0 +1,64 @@
+---
+# inventory/hosts.yml - Fixed version
+all:
+  vars:
+    # Network configuration
+    rke2_cluster_cidr: "172.16.0.0/16"  # Custom pod network
+    rke2_service_cidr: "172.17.0.0/16"  # Custom service network
+    rke2_cni: "canal"                   # CNI plugin choice
+    # Optional: Advanced CNI configuration
+    rke2_canal_config:
+      flannel:
+        interface: "ens192"
+        backend_type: "vxlan"
+        vxlan_port: 9789
+      calico:
+        mtu: 1450
+        ip_autodetection_method: "interface=ens192"
+    rke2_version: "v1.30.5+rke2r1"
+    rke2_token: "K10f8e7c4b9a2d1f3e6c8a5b7d9f2e4c6a8b5d7f9e2c4a6b8d5f7e9c2a4b6d8f5a7c9e"
+    # SSH configuration
+    ansible_user: chait
+    ansible_ssh_private_key_file: "~/.ssh/id_rsa"
+    ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
+    ansible_become: true  # ADDED: Required for RKE2 installation
+    # API Server binding configuration
+    rke2_bind_address: "0.0.0.0"  # Bind to all interfaces
+    rke2_advertise_address: "{{ ansible_default_ipv4.address }}"  # Advertise actual IP
+    # TLS SANs - important for external access
+    rke2_tls_san:
+      - "{{ ansible_default_ipv4.address }}"
+      - "{{ ansible_hostname }}"
+      - "{{ ansible_fqdn }}"
+      - "0.0.0.0"
+      - "127.0.0.1"
+      - "localhost"
+    # ADDED: RKE2 specific settings
+    rke2_download_kubeconf: true
+    rke2_download_kubeconf_path: "/tmp"
+  children:
+    masters:
+      hosts:
+        master-01:
+          ansible_host: 10.31.44.100
+          rke2_node_ip: 10.31.44.100
+        master-02:
+          ansible_host: 10.31.44.101
+          rke2_node_ip: 10.31.44.101
+        master-03:
+          ansible_host: 10.31.44.102
+          rke2_node_ip: 10.31.44.102
+    workers:
+      hosts:
+        worker-01:
+          ansible_host: 10.31.44.111
+          rke2_node_ip: 10.31.44.111
+        worker-02:
+          ansible_host: 10.31.44.112
+          rke2_node_ip: 10.31.44.112
+    rke2_servers:
+      children:
+        masters:  # Masters are the RKE2 servers
+    rke2_agents:
+      children:
+        workers:  # Workers are the RKE2 agents

@@ -1,0 +1,31 @@
+{% if rke2_cni is defined %}
+cni: {{ rke2_cni }}
+{% endif %}
+
+# Node configuration
+{% if rke2_node_ip is defined %}
+node-ip: {{ rke2_node_ip }}
+{% endif %}
+
+# Additional server options
+{% if rke2_server_options is defined %}
+{% for option in rke2_server_options %}
+{{ option }}
+{% endfor %}
+{% endif %}
+
+# TLS SANs for API server
+{% if rke2_tls_san is defined %}
+tls-san:
+{% for san in rke2_tls_san %}
+  - {{ san }}
+{% endfor %}
+{% endif %}
+
+# Disable default components if needed
+{% if rke2_disable is defined %}
+disable:
+{% for component in rke2_disable %}
+  - {{ component }}
+{% endfor %}
+{% endif %}

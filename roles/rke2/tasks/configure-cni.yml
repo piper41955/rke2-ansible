@@ -1,0 +1,92 @@
+- name: Create RKE2 manifests directory
+  ansible.builtin.file:
+    path: /var/lib/rancher/rke2/server/manifests
+    state: directory
+    mode: '0755'
+  when: inventory_hostname in groups['masters']
+
+- name: Deploy Canal HelmChartConfig
+  ansible.builtin.template:
+    src: rke2-canal-config.yaml.j2
+    dest: /var/lib/rancher/rke2/server/manifests/rke2-canal-config.yaml
+    mode: '0644'
+    owner: root
+    group: root
+  when:
+    - inventory_hostname in groups['masters']
+    - rke2_cni == "canal"
+    - rke2_canal_config is defined
+  notify: restart rke2-server
+
+- name: Deploy Cilium HelmChartConfig
+  ansible.builtin.template:
+    src: rke2-cilium-config.yaml.j2
+    dest: /var/lib/rancher/rke2/server/manifests/rke2-cilium-config.yaml
+    mode: '0644'
+    owner: root
+    group: root
+  when:
+    - inventory_hostname in groups['masters']
+    - rke2_cni == "cilium"
+    - rke2_cilium_config is defined
+  notify: restart rke2-server
+
+- name: Deploy Calico HelmChartConfig
+  ansible.builtin.template:
+    src: rke2-calico-config.yaml.j2
+    dest: /var/lib/rancher/rke2/server/manifests/rke2-calico-config.yaml
+    mode: '0644'
+    owner: root
+    group: root
+  when:
+    - inventory_hostname in groups['masters']
+    - rke2_cni == "calico"
+    - rke2_calico_config is defined
+  notify: restart rke2-server
+
+- name: Deploy Flannel HelmChartConfig
+  ansible.builtin.template:
+    src: rke2-flannel-config.yaml.j2
+    dest: /var/lib/rancher/rke2/server/manifests/rke2-flannel-config.yaml
+    mode: '0644'
+    owner: root
+    group: root
+  when:
+    - inventory_hostname in groups['masters']
+    - rke2_cni == "flannel"
+    - rke2_flannel_config is defined
+  notify: restart rke2-server
+
+- name: Validate cluster CIDR format
+  ansible.builtin.assert:
+    that:
+      - rke2_cluster_cidr | regex_search('^(\d{1,3}\.){3}\d{1,3}/\d{1,2}(,([0-9a-fA-F:]+)/\d{1,3})?$')
+    fail_msg: "rke2_cluster_cidr must be in valid CIDR format (IPv4/prefix or IPv4/prefix,IPv6/prefix)"
+    success_msg: "rke2_cluster_cidr format is valid"
+  when: rke2_cluster_cidr is defined
+
+- name: Validate service CIDR format
+  ansible.builtin.assert:
+    that:
+      - rke2_service_cidr | regex_search('^(\d{1,3}\.){3}\d{1,3}/\d{1,2}(,([0-9a-fA-F:]+)/\d{1,3})?$')
+    fail_msg: "rke2_service_cidr must be in valid CIDR format (IPv4/prefix or IPv4/prefix,IPv6/prefix)"
+    success_msg: "rke2_service_cidr format is valid"
+  when: rke2_service_cidr is defined
+
+- name: Check for CIDR overlap
+  ansible.builtin.assert:
+    that:
+      - rke2_cluster_cidr != rke2_service_cidr
+    fail_msg: "rke2_cluster_cidr and rke2_service_cidr cannot be the same"
+    success_msg: "No CIDR overlap detected"
+  when:
+    - rke2_cluster_cidr is defined
+    - rke2_service_cidr is defined
+
+- name: Display network configuration
+  ansible.builtin.debug:
+    msg:
+      - "CNI Plugin: {{ rke2_cni }}"
+      - "Cluster CIDR: {{ rke2_cluster_cidr | default('10.42.0.0/16') }}"
+      - "Service CIDR: {{ rke2_service_cidr | default('10.43.0.0/16') }}"
+  when: inventory_hostname == groups['masters'][0]

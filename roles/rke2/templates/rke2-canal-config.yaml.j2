@@ -1,0 +1,31 @@
+{% if rke2_cni == "canal" and rke2_canal_config is defined %}
+---
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: rke2-canal
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    flannel:
+      {% if rke2_canal_config.flannel is defined %}
+      {% if rke2_canal_config.flannel.interface is defined %}
+      iface: {{ rke2_canal_config.flannel.interface }}
+      {% endif %}
+      {% if rke2_canal_config.flannel.backend_type is defined %}
+      backend_type: {{ rke2_canal_config.flannel.backend_type }}
+      {% endif %}
+      {% if rke2_canal_config.flannel.vxlan_port is defined %}
+      vxlan_port: {{ rke2_canal_config.flannel.vxlan_port }}
+      {% endif %}
+      {% endif %}
+    calico:
+      {% if rke2_canal_config.calico is defined %}
+      {% if rke2_canal_config.calico.mtu is defined %}
+      mtu: {{ rke2_canal_config.calico.mtu }}
+      {% endif %}
+      {% if rke2_canal_config.calico.ip_autodetection_method is defined %}
+      ip_autodetection_method: "{{ rke2_canal_config.calico.ip_autodetection_method }}"
+      {% endif %}
+      {% endif %}
+{% endif %}
