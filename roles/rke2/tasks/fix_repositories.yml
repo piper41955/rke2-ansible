@@ -1,0 +1,47 @@
+- name: Remove problematic Docker repository
+  ansible.builtin.apt_repository:
+    repo: "{{ item }}"
+    state: absent
+    update_cache: false
+  loop:
+    - "deb [arch=amd64] https://download.docker.com/linux/ubuntu noble stable"
+    - "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+  ignore_errors: true
+
+- name: Remove Docker GPG key files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/apt/keyrings/docker.gpg
+    - /etc/apt/trusted.gpg.d/docker.gpg
+    - /usr/share/keyrings/docker-archive-keyring.gpg
+  ignore_errors: true
+
+- name: Clean apt sources list
+  ansible.builtin.lineinfile:
+    path: /etc/apt/sources.list
+    regexp: ".*download.docker.com.*"
+    state: absent
+  ignore_errors: true
+
+- name: Remove Docker sources from sources.list.d
+  ansible.builtin.find:
+    paths: /etc/apt/sources.list.d/
+    patterns: "*docker*"
+  register: docker_sources
+
+- name: Delete Docker source files
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ docker_sources.files }}"
+  ignore_errors: true
+
+- name: Update package cache after cleanup
+  ansible.builtin.apt:
+    update_cache: true
+    force_apt_get: true
+  retries: 3
+  delay: 5
+  ignore_errors: true

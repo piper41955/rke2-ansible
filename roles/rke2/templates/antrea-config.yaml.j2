@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: antrea-config
+  namespace: kube-system
+data:
+  antrea-agent.conf: |
+    featureGates:
+      AntreaProxy: {{ antrea_proxy | default('true') }}
+      EndpointSlice: {{ endpoint_slice | default('true') }}
+    trafficEncapMode: {{ traffic_encap_mode | default('encap') }}

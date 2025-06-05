@@ -63,6 +63,9 @@
   delegate_to: localhost
   run_once: true
 
+- name: Fix proxy settings
+  ansible.builtin.include_tasks: proxy.yml
+
 - name: Tarball Install
   ansible.builtin.include_tasks: tarball_install.yml
   when:
@@ -102,6 +105,9 @@
     token_source_node: "{{ ready_servers[0] }}"
   when:
     - ready_servers | length > 0
+
+- name: Install Antrea rke2_cni
+  ansible.builtin.include_tasks: antrea_cni.yml
 
 - name: Start all other rke2 nodes
   ansible.builtin.include_tasks: other_nodes.yml

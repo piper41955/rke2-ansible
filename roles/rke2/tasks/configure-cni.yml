@@ -15,7 +15,6 @@
   when:
     - inventory_hostname in groups['masters']
     - rke2_cni == "canal"
-    - rke2_canal_config is defined
   notify: restart rke2-server
 
 - name: Deploy Cilium HelmChartConfig

@@ -1,5 +1,5 @@
 ---
-rke2_kubernetes_api_server_host: "http://10.31.44.100"
+rke2_kubernetes_api_server_host: "127.0.0.1"
 rke2_tarball_install_dir: "/usr/local"
 rke2_install_local_tarball_path: ""
 rke2_install_tarball_url: "https://github.com/rancher/rke2/releases/download/v1.33.1%2Brke2r1/rke2.linux-amd64.tar.gz"
@@ -28,4 +28,4 @@ rke2_package_state: "installed"
 rke2_systemd_env_config_file_path: ""
 rke2_cluster_cidr: "10.42.0.0/16"
 rke2_service_cidr: "10.43.0.0/16"
-rke2_cni: "canal"  # Options: canal, cilium, calico, flannel, none
+rke2_cni: "none"  # Options: canal, cilium, calico, flannel, none

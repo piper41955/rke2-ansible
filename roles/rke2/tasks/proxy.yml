@@ -1,0 +1,57 @@
+- name: Create systemd drop-in directory for rke2-server
+  ansible.builtin.file:
+      path: /etc/systemd/system/rke2-server.service.d
+      state: directory
+      mode: '0755'
+  when: "'rke2_servers' in group_names"
+
+- name: Create systemd drop-in directory for rke2-agent
+  ansible.builtin.file:
+      path: /etc/systemd/system/rke2-agent.service.d
+      state: directory
+      mode: '0755'
+  when: "'rke2_agents' in group_names"
+
+- name: Configure HTTP proxy for rke2-server service
+  ansible.builtin.copy:
+      content: |
+        [Service]
+        Environment="HTTP_PROXY={{ http_proxy }}"
+        Environment="HTTPS_PROXY={{ https_proxy }}"
+        Environment="NO_PROXY={{ no_proxy }}"
+      dest: /etc/systemd/system/rke2-server.service.d/http-proxy.conf
+      mode: '0644'
+      backup: true
+  when: "'rke2_servers' in group_names"
+  notify:
+      - Reload systemd
+      - Restart rke2-server
+
+- name: Configure HTTP proxy for rke2-agent service
+  ansible.builtin.copy:
+      content: |
+        [Service]
+        Environment="HTTP_PROXY={{ http_proxy }}"
+        Environment="HTTPS_PROXY={{ https_proxy }}"
+        Environment="NO_PROXY={{ no_proxy }}"
+      dest: /etc/systemd/system/rke2-agent.service.d/http-proxy.conf
+      mode: '0644'
+      backup: true
+  when: "'rke2_agents' in group_names"
+  notify:
+      - Reload systemd
+      - Restart rke2-agent
+
+- name: Verify rke2-server proxy configuration file exists
+  ansible.builtin.stat:
+      path: "/etc/systemd/system/rke2-server.service.d/http-proxy.conf"
+  when: "'rke2_servers' in group_names"
+
+- name: Verify rke2-agent proxy configuration file exists
+  ansible.builtin.stat:
+      path: "/etc/systemd/system/rke2-agent.service.d/http-proxy.conf"
+  when: "'rke2_agents' in group_names"
+
+- name: Display proxy configuration status
+  ansible.builtin.debug:
+      msg: "Proxy configuration applied for {{ inventory_hostname }}"
