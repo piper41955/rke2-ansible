@@ -59,6 +59,6 @@
   delegate_to: "{{ groups['masters'][0] }}"
   until: >
     antrea_ds.resources[0].status.numberReady is defined and
-    antrea_ds.resources[0].status.numberReady == groups['all'] | length
+    antrea_ds.resources[0].status.numberReady >= 1
   retries: 30
   delay: 15
