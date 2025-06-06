@@ -25,14 +25,14 @@
     kubeconfig: /etc/rancher/rke2/rke2.yaml
     src: /tmp/antrea-rke2.yml
     state: present
-  delegate_to: "master-01"
+  delegate_to: "{{ groups['masters'][0] }}"
 
 - name: Apply Antrea CNI
   kubernetes.core.k8s:
     kubeconfig: /etc/rancher/rke2/rke2.yaml
     src: /tmp/antrea-original.yml
     state: present
-  delegate_to: "master-01"
+  delegate_to: "{{ groups['masters'][0] }}"
 
 - name: Wait for Antrea controller
   kubernetes.core.k8s_info:
@@ -46,7 +46,7 @@
       type: Available
       status: "True"
     wait_timeout: 300
-  delegate_to: "master-01"
+  delegate_to: "{{ groups['masters'][0] }}"
 
 - name: Wait for Antrea agents
   kubernetes.core.k8s_info:
@@ -56,7 +56,7 @@
     name: antrea-agent
     namespace: kube-system
   register: antrea_ds
-  delegate_to: "master-01"
+  delegate_to: "{{ groups['masters'][0] }}"
   until: >
     antrea_ds.resources[0].status.numberReady is defined and
     antrea_ds.resources[0].status.numberReady >= 1
