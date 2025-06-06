@@ -1,5 +1,3 @@
----
-
 # combine host and group vars to form primary rke2_config
 - name: Combine host and group config vars
   ansible.builtin.set_fact:

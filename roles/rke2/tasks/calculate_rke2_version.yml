@@ -84,8 +84,7 @@
         rke2_version_rpm: "{{ '-' + rke2_version_rpm }}"
       when:
         - rke2_version_rpm | length > 0
-
-#   - name: Describe versions
+# - name: Describe versions
 #   ansible.builtin.debug:
 #     msg:
 #       - "Full version, with revision indication: {{ rke2_full_version }}"
