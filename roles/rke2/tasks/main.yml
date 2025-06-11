@@ -91,6 +91,9 @@
     - inventory_hostname in groups['rke2_servers'][0]
     - ready_servers | length == 0
 
+- name: Add imagepullsecret
+  ansible.builtin.include_tasks: add_imagepullsecret.yml
+
 - name: Save_generated_token.yml
   ansible.builtin.include_tasks: save_generated_token.yml
   vars:

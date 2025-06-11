@@ -44,3 +44,11 @@
     file_path: "{{ rke2_pod_security_admission_config_file_path }}"
   when:
     - inventory_hostname in groups['rke2_servers']
+
+- name: Add registry configuration
+  ansible.builtin.template:
+    src: registries.yaml.j2
+    dest: /etc/rancher/rke2/registries.yaml
+    mode: '0644'
+    owner: root
+    group: root

@@ -14,12 +14,10 @@ all:
     no_proxy: "localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,.svc,.cluster.local,{{ ansible_default_ipv4.network }}/{{ ansible_default_ipv4.netmask }}"
 
     # Network configuration
-    pod_cidr: "10.31.45.0/24"  # Custom pod network
-    service_cidr: "10.31.46.0/24"
     cluster_domain: "cluster.local"
     ncp_namespace: "nsx-system" 
     rke2_service_cidr: "172.17.0.0/16"  # Custom service network
-    rke2_cni: [none]                   # CNI plugin choice
+    rke2_cni: ["calico"]                   # CNI plugin choice
     rke2_token: "K10f8e7c4b9a2d1f3e6c8a5b7d9f2e4c6a8b5d7f9e2c4a6b8d5f7e9c2a4b6d8f5a7c9e"
 
     # NSX-T specific variables (username/password auth)

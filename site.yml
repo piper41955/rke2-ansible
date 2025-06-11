@@ -9,13 +9,13 @@
     - role: rke2
 
   pre_tasks:
-    - name: Validate NSX-T configuration
-      ansible.builtin.assert:
-        that:
-          - nsx_manager_host is defined
-          - nsx_username is defined
-          - nsx_password is defined
-          - pod_cidr is defined
-          - service_cidr is defined
-        fail_msg: "NSX-T configuration variables are required"
-      run_once: true
+#    - name: Validate NSX-T configuration
+#      ansible.builtin.assert:
+#        that:
+#          - nsx_manager_host is defined
+#          - nsx_username is defined
+#          - nsx_password is defined
+#          - pod_cidr is defined
+#          - service_cidr is defined
+#        fail_msg: "NSX-T configuration variables are required"
+#      run_once: true
