@@ -1,3 +1,4 @@
+---
 - name: Remove problematic Docker repository
   ansible.builtin.apt_repository:
     repo: "{{ item }}"

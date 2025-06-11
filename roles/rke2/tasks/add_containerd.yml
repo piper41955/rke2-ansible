@@ -1,3 +1,5 @@
+---
+
 # - name: Cleanup sources
 #   ansible.builtin.import_tasks: fix_repositories.yml
 
@@ -13,6 +15,7 @@
           - curl
           - gnupg
           - lsb-release
+          - python3-kubernetes
       state: present
 
 - name: Install snaps

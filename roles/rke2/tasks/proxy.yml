@@ -1,3 +1,5 @@
+---
+
 - name: Create systemd drop-in directory for rke2-server
   ansible.builtin.file:
       path: /etc/systemd/system/rke2-server.service.d

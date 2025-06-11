@@ -1,3 +1,5 @@
+---
+
 rke2_kubernetes_api_server_host: "127.0.0.1"
 rke2_tarball_install_dir: "/usr/local"
 rke2_install_local_tarball_path: ""
@@ -27,4 +29,4 @@ rke2_package_state: "installed"
 rke2_systemd_env_config_file_path: ""
 rke2_cluster_cidr: "10.42.0.0/16"
 rke2_service_cidr: "10.43.0.0/16"
-rke2_cni: "none"  # Options: canal, cilium, calico, flannel, none
+rke2_cni: none  # Options: "canal", "cilium", "calico", "flannel", none

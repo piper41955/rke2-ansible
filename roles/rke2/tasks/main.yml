@@ -106,9 +106,6 @@
   when:
     - ready_servers | length > 0
 
-- name: Install Antrea rke2_cni
-  ansible.builtin.include_tasks: antrea_cni.yml
-
 - name: Start all other rke2 nodes
   ansible.builtin.include_tasks: other_nodes.yml
 
