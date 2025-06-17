@@ -32,6 +32,25 @@
 - name: Satisfy OS Pre-Reqs
   ansible.builtin.include_tasks: pre_reqs.yml
 
+- name: Enable kernel modules
+  community.general.modprobe:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - overlay
+    - br_netfilter
+
+- name: Set kernel parameters
+  ansible.posix.sysctl:
+    name: "{{ item }}"
+    value: "1"
+    state: present
+    reload: true
+  loop:
+    - net.bridge.bridge-nf-call-iptables
+    - net.bridge.bridge-nf-call-ip6tables
+    - net.ipv4.ip_forward
+
 - name: Has rke2 been installed already
   ansible.builtin.include_tasks: previous_install.yml
 
@@ -94,12 +113,9 @@
 - name: Add imagepullsecret
   ansible.builtin.include_tasks: add_imagepullsecret.yml
 
-- name: Save_generated_token.yml
-  ansible.builtin.include_tasks: save_generated_token.yml
-  vars:
-    token_source_node: "{{ groups['rke2_servers'][0] }}"
-  when:
-    - ready_servers | length == 0
+- name: Execute NSX role
+  ansible.builtin.include_role:
+    name: nsx-operator
 
 # is the ready_servers array is > 0, we assume it's an established cluster and treat all nodes equally (no need for initial server procedure)
 - name: Save_generated_token.yml

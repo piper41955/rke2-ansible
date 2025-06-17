@@ -69,3 +69,9 @@
     name: rke2-agent
     state: restarted
     when: "'rke2_agents' in group_names"
+
+- name: Restart rke2
+  ansible.builtin.systemd:
+    name: "rke2-{{ rke2_type }}"
+    state: restarted
+  when: rke2_type in ['server', 'agent']

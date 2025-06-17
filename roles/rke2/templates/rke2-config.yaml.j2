@@ -1,0 +1,47 @@
+# RKE2 server configuration
+write-kubeconfig-mode: "0644"
+cluster-cidr: "{{ cluster_cidr }}"
+service-cidr: "{{ service_cidr }}"
+cluster-dns: "{{ rke2_cluster_dns }}"
+
+# Disable default CNI for NSX integration
+disable-network-policy: true
+cni: none
+{% if rke2_type == "server" %}
+# Server-specific configuration
+tls-san:
+{% for host in groups['masters'] %}
+  - "{{ hostvars[host]['ansible_default_ipv4']['address'] }}"
+{% endfor %}
+{% if rke2_vip is defined %}
+  - "{{ rke2_vip }}"
+{% endif %}
+
+# etcd configuration
+etcd-expose-metrics: true
+etcd-disable-snapshots: false
+etcd-snapshot-schedule-cron: "0 */12 * * *"
+etcd-snapshot-retention: 5
+
+{% else %}
+# Agent configuration
+server: "https://{{ hostvars[groups['masters'][0]]['ansible_default_ipv4']['address'] }}:9345"
+token: "{{ rke2_token }}"
+{% endif %}
+
+# Node configuration
+node-name: "{{ inventory_hostname }}"
+node-ip: "{{ ansible_default_ipv4.address }}"
+
+# Kubelet configuration
+kubelet-arg:
+  - "max-pods=250"
+  - "cluster-dns={{ rke2_cluster_dns }}"
+  - "cluster-domain=cluster.local"
+
+# Disable components that conflict with NSX
+disable:
+  - rke2-canal
+  - rke2-cilium
+  - rke2-flannel
+  - rke2-calico

@@ -6,6 +6,15 @@
     state: directory
     recurse: true
 
+- name: Generate RKE2 configuration
+  ansible.builtin.include_tasks: add_ansible_managed_config.yml
+  vars:
+    file_contents: "{{ lookup('template', 'rke2-config.yaml.j2') }}"
+    file_destination: "/etc/rancher/rke2/config.yaml"
+    file_description: "RKE2 server configuration"
+    file_path: "templates/rke2-config.yaml.j2"
+    service_name: "rke2-server"
+
 - name: Run CIS-Hardening Tasks
   ansible.builtin.include_tasks: cis_hardening.yml
 
