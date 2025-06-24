@@ -32,25 +32,6 @@
 - name: Satisfy OS Pre-Reqs
   ansible.builtin.include_tasks: pre_reqs.yml
 
-- name: Enable kernel modules
-  community.general.modprobe:
-    name: "{{ item }}"
-    state: present
-  loop:
-    - overlay
-    - br_netfilter
-
-- name: Set kernel parameters
-  ansible.posix.sysctl:
-    name: "{{ item }}"
-    value: "1"
-    state: present
-    reload: true
-  loop:
-    - net.bridge.bridge-nf-call-iptables
-    - net.bridge.bridge-nf-call-ip6tables
-    - net.ipv4.ip_forward
-
 - name: Has rke2 been installed already
   ansible.builtin.include_tasks: previous_install.yml
 
@@ -82,9 +63,6 @@
   delegate_to: localhost
   run_once: true
 
-- name: Fix proxy settings
-  ansible.builtin.include_tasks: proxy.yml
-
 - name: Tarball Install
   ansible.builtin.include_tasks: tarball_install.yml
   when:
@@ -103,6 +81,9 @@
     - rke2_manifest_config_directory | length > 0
     - inventory_hostname in groups['rke2_servers'][0]
 
+- name: Configure Proxy
+  ansible.builtin.include_tasks: proxy.yml
+
 # is the ready_servers array is empty, we assume it's a new cluster and use the first server in groups['rke2_servers']
 - name: Start the first rke2 node
   ansible.builtin.include_tasks: first_server.yml
@@ -110,12 +91,12 @@
     - inventory_hostname in groups['rke2_servers'][0]
     - ready_servers | length == 0
 
-- name: Add imagepullsecret
-  ansible.builtin.include_tasks: add_imagepullsecret.yml
-
-- name: Execute NSX role
-  ansible.builtin.include_role:
-    name: nsx-operator
+- name: Save_generated_token.yml
+  ansible.builtin.include_tasks: save_generated_token.yml
+  vars:
+    token_source_node: "{{ groups['rke2_servers'][0] }}"
+  when:
+    - ready_servers | length == 0
 
 # is the ready_servers array is > 0, we assume it's an established cluster and treat all nodes equally (no need for initial server procedure)
 - name: Save_generated_token.yml
@@ -124,6 +105,12 @@
     token_source_node: "{{ ready_servers[0] }}"
   when:
     - ready_servers | length > 0
+
+- name: Configure CNI
+  ansible.builtin.include_tasks: configure-cni.yml
+
+- name: Configure Iptables
+  ansible.builtin.include_tasks: iptables_rules.yml
 
 - name: Start all other rke2 nodes
   ansible.builtin.include_tasks: other_nodes.yml
@@ -142,3 +129,12 @@
     - rke2_manifest_config_post_run_directory is defined
     - rke2_manifest_config_post_run_directory | length > 0
     - inventory_hostname in groups['rke2_servers'][0]
+
+- name: Add registry definition
+  ansible.builtin.template:
+    src: registries.yaml.j2
+    dest: /etc/rancher/rke2/registries.yaml
+    mode: '0644'
+    owner: root
+    group: root
+

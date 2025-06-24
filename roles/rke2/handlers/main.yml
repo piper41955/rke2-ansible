@@ -13,6 +13,10 @@
   when:
     - not rke2_reboot
 
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+
 - name: Restart fapolicyd
   ansible.builtin.service:
     state: restarted
@@ -53,25 +57,3 @@
   throttle: 1
   when:
     - rke2_reboot
-
-- name: Reload systemd
-  ansible.builtin.systemd:
-    daemon_reload: true
-
-- name: Restart rke2-server
-  ansible.builtin.systemd:
-    name: rke2-server
-    state: restarted
-    when: "'rke2_servers' in group_names"
-
-- name: Restart rke2-agent
-  ansible.builtin.systemd:
-    name: rke2-agent
-    state: restarted
-    when: "'rke2_agents' in group_names"
-
-- name: Restart rke2
-  ansible.builtin.systemd:
-    name: "rke2-{{ rke2_type }}"
-    state: restarted
-  when: rke2_type in ['server', 'agent']

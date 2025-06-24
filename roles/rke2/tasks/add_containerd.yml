@@ -1,98 +1,176 @@
 ---
 
-# - name: Cleanup sources
-#   ansible.builtin.import_tasks: fix_repositories.yml
+- name: Link systemd resolv.conf to /etc/resolv.conf
+  ansible.builtin.file:
+    src: /run/systemd/resolve/resolv.conf
+    dest: /etc/resolv.conf
+    state: link
+    force: yes
+  become: yes
 
 - name: Update apt cache
   ansible.builtin.apt:
-      update_cache: true
-      cache_valid_time: 3600
+    update_cache: true
+    cache_valid_time: 3600
 
 - name: Install prerequisites
   ansible.builtin.apt:
-      name:
-          - ca-certificates
-          - curl
-          - gnupg
-          - lsb-release
-          - python3-kubernetes
-      state: present
+    name:
+      - ca-certificates
+      - curl
+      - gnupg
+      - lsb-release
+      - containerd
+      - runc
+    state: present
 
-- name: Install snaps
+- name: Install kubectl snap
   community.general.snap:
-      name:
-          - kubectl
-      state: present
-      classic: true
-
-- name: Download Docker's official GPG key
-  ansible.builtin.get_url:
-      url: https://download.docker.com/linux/ubuntu/gpg
-      dest: /etc/apt/keyrings/docker.asc
-      mode: '0644'
-
-- name: Add Docker repository
-  ansible.builtin.apt_repository:
-      repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
-      state: present
-      update_cache: true
-
-- name: Update apt cache after adding repository
-  ansible.builtin.apt:
-      update_cache: true
-
-- name: Install containerd
-  ansible.builtin.apt:
-      name: containerd.io
-      state: present
+    name: kubectl
+    classic: yes
+    state: present
+  become: yes
 
 - name: Create containerd configuration directory
   ansible.builtin.file:
-      path: "/etc/containerd"
-      state: directory
-      mode: '0755'
+    path: "/etc/containerd"
+    state: directory
+    mode: '0755'
 
 - name: Generate default containerd configuration
   ansible.builtin.shell: containerd config default > /etc/containerd/config.toml
   args:
-      creates: /etc/containerd/config.toml
+    creates: /etc/containerd/config.toml
 
 - name: Configure containerd to use systemd cgroup driver
   ansible.builtin.lineinfile:
-      path: /etc/containerd/config.toml
-      regexp: '^\s*SystemdCgroup\s*='
-      line: '            SystemdCgroup = true'
-      insertafter: '.*\[plugins\."io\.containerd\.grpc\.v1\.cri"\.containerd\.runtimes\.runc\.options\]'
+    path: /etc/containerd/config.toml
+    regexp: '^\s*SystemdCgroup\s*='
+    line: '            SystemdCgroup = true'
+    insertafter: '.*\[plugins\."io\.containerd\.grpc\.v1\.cri"\.containerd\.runtimes\.runc\.options\]'
 
+# Add proxy configuration for containerd service
+- name: Create containerd systemd override directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/containerd.service.d
+    state: directory
+    mode: '0755'
+
+- name: Configure containerd proxy settings
+  ansible.builtin.template:
+    src: proxy.yaml.j2
+    dest: /etc/systemd/system/containerd.service.d/http-proxy.conf
+    mode: '0644'
+    backup: true
+  notify:
+    - Reload systemd
+    - Restart containerd
+
+# Configure Docker Hub registry with proxy support
+- name: Create containerd registry configuration directory
+  ansible.builtin.file:
+    path: /etc/containerd/certs.d/docker.io
+    state: directory
+    mode: '0755'
+
+- name: Configure Docker Hub registry hosts
+  ansible.builtin.copy:
+    dest: /etc/containerd/certs.d/docker.io/hosts.toml
+    content: |
+      server = "https://docker.io"
+
+      [host."https://registry-1.docker.io"]
+        capabilities = ["pull", "resolve"]
+    mode: '0644'
+  notify: Restart containerd
+
+- name: Set containerd registry config path
+  ansible.builtin.lineinfile:
+    path: /etc/containerd/config.toml
+    regexp: '^\s*config_path\s*='
+    line: '      config_path = "/etc/containerd/certs.d"'
+    insertafter: '.*\[plugins\."io\.containerd\.grpc\.v1\.cri"\.registry\]'
+  notify: Restart containerd
+
+# Alternative: Add registry mirrors directly to config.toml
+- name: Add Docker Hub mirror configuration to containerd config
+  ansible.builtin.blockinfile:
+    path: /etc/containerd/config.toml
+    marker: "# {mark} ANSIBLE MANAGED - Docker Hub Proxy Configuration"
+    insertafter: '.*\[plugins\."io\.containerd\.grpc\.v1\.cri"\.registry\.mirrors\]'
+    block: |
+
+        [plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
+          endpoint = ["https://registry-1.docker.io"]
+
+        [plugins."io.containerd.grpc.v1.cri".registry.configs."registry-1.docker.io".tls]
+          insecure_skip_verify = false
+
+        [plugins."io.containerd.grpc.v1.cri".registry.configs."registry-1.docker.io".auth]
+          username = ""
+          password = ""
+  notify: Restart containerd
 
 - name: Configure containerd for RKE2 (optional)
   block:
-      - name: Ensure containerd uses correct socket path for RKE2
-        ansible.builtin.lineinfile:
-            path: /etc/containerd/config.toml
-            regexp: '^\s*address\s*='
-            line: '  address = "/run/k3s/containerd/containerd.sock"'
-            insertafter: '^\[grpc\]'
-        become: true
-        register: configure_for_rke2_changed
-        notify: Restart containerd
+    - name: Ensure containerd uses correct socket path for RKE2
+      ansible.builtin.lineinfile:
+        path: /etc/containerd/config.toml
+        regexp: '^\s*address\s*='
+        line: '  address = "/run/k3s/containerd/containerd.sock"'
+        insertafter: '^\[grpc\]'
+      become: true
+      register: configure_for_rke2_changed
+      notify: Restart containerd
 
 - name: Create containerd socket directory
   ansible.builtin.file:
-      path: /run/k3s/containerd
-      state: directory
-      mode: '0755'
+    path: /run/k3s/containerd
+    state: directory
+    mode: '0755'
   become: true
   when: configure_for_rke2 | default(false)
 
 - name: Start and enable containerd service
   ansible.builtin.systemd:
-      name: containerd
-      state: started
-      enabled: true
-      daemon_reload: true
+    name: containerd
+    state: started
+    enabled: true
+    daemon_reload: true
 
 - name: Verify containerd is running
   ansible.builtin.systemd:
-      state: started
-      name: containerd
+    name: containerd
+  register: containerd_status
+
+- name: Display containerd status
+  ansible.builtin.debug:
+    msg: "Containerd service status: {{ containerd_status.stdout | default(containerd_status.status.ActiveState) }}"
+
+# Test proxy connectivity
+- name: Test Docker Hub connectivity through proxy
+  ansible.builtin.uri:
+    url: https://registry-1.docker.io/v2/
+    method: GET
+    validate_certs: true
+    status_code: [401, 200]  # 401 is expected without auth, 200 with auth
+  environment:
+    https_proxy: "http://10.31.10.15:3128"
+    http_proxy: "http://10.31.10.15:3128"
+  register: docker_hub_test
+  ignore_errors: true
+
+- name: Display Docker Hub connectivity test result
+  ansible.builtin.debug:
+    msg: "Docker Hub connectivity test: {{ 'SUCCESS' if docker_hub_test.status in [200, 401] else 'FAILED' }}"
+
+# Test image pull capability
+- name: Test pulling a small image to verify proxy configuration
+  ansible.builtin.command: crictl pull registry.k8s.io/pause:3.8
+  register: test_pull
+  ignore_errors: true
+  changed_when: false
+
+- name: Display image pull test result
+  ansible.builtin.debug:
+    msg: "Image pull test: {{ 'SUCCESS' if test_pull.rc == 0 else 'FAILED - ' + test_pull.stderr }}"

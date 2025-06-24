@@ -1,80 +1,140 @@
 ---
+# Initialize variables
+- name: Initialize RKE2 status variables
+  ansible.builtin.set_fact:
+    rke2_api_server_running: false
+    rke2_metrics_running: false
+    rke2_node_ready: false
+    kubelet_node_name: ""
 
+# Wait for k8s apiserver
 - name: Wait for k8s apiserver
   ansible.builtin.wait_for:
     host: localhost
     port: "6443"
     state: present
-    timeout: "{{ check_node_ready_timeout }}"
+    timeout: "{{ check_node_ready_timeout | default(300) }}"
   changed_when: false
-  register: api_serve_status
-  ignore_errors: "{{ check_node_ready_ignore_errors }}"
+  register: api_server_status
+  ignore_errors: "{{ check_node_ready_ignore_errors | default(false) }}"
 
-- name: Set fact
+- name: Set API server running fact
   ansible.builtin.set_fact:
     rke2_api_server_running: true
   when:
-    - api_serve_status.state is not undefined
-    - api_serve_status.state == "present"
+    - api_server_status.state is defined
+    - api_server_status.state == "started"
 
-- name: Set fact
-  ansible.builtin.set_fact:
-    rke2_api_server_running: "{{ rke2_api_server_running }}"
-
-- name: Get node_metrics
+# Get node metrics
+- name: Get node metrics
   ansible.builtin.uri:
     url: https://localhost:10250/metrics
     return_content: true
     ca_path: /var/lib/rancher/rke2/server/tls/server-ca.crt
     client_cert: /var/lib/rancher/rke2/server/tls/client-admin.crt
     client_key: /var/lib/rancher/rke2/server/tls/client-admin.key
+    validate_certs: true
   register: node_metrics
-  retries: "{{ check_node_ready_retries }}"
-  delay: "{{ check_node_ready_delay }}"
-  ignore_errors: "{{ check_node_ready_ignore_errors }}"
+  retries: "{{ check_node_ready_retries | default(30) }}"
+  delay: "{{ check_node_ready_delay | default(10) }}"
+  ignore_errors: "{{ check_node_ready_ignore_errors | default(false) }}"
 
-- name: Check that node_metrics collection was successful
+- name: Set metrics running fact
   ansible.builtin.set_fact:
     rke2_metrics_running: true
   when:
-    - 200 | string in node_metrics.status | string
+    - node_metrics.status is defined
+    - node_metrics.status == 200
 
-- name: Set fact for rke2_metrics_running
+# Extract the kubelet node name from node metrics
+- name: Extract kubelet node name from metrics
   ansible.builtin.set_fact:
-    rke2_metrics_running: "{{ rke2_metrics_running }}"
-
-- name: Extract the kubelet_node_name from node metrics
-  ansible.builtin.set_fact:
-    kubelet_node_name: "{{ node_metrics.content | regex_search('kubelet_node_name{node=\"(.*)\"}', '\\1') }}"
+    kubelet_node_name: "{{ node_metrics.content | regex_search('kubelet_node_name{node=\"([^\"]+)\"', '\\1') | first }}"
   when:
-    - 200 | string in node_metrics.status | string
+    - node_metrics.status is defined
+    - node_metrics.status == 200
+    - node_metrics.content is defined
 
+# Fallback: use inventory hostname if node name extraction fails
+- name: Set kubelet node name fallback
+  ansible.builtin.set_fact:
+    kubelet_node_name: "{{ inventory_hostname }}"
+  when:
+    - kubelet_node_name == "" or kubelet_node_name is not defined
+
+# Wait for node to show Ready status
 - name: Wait for node to show Ready status
   ansible.builtin.command: >-
     /var/lib/rancher/rke2/bin/kubectl --kubeconfig /etc/rancher/rke2/rke2.yaml
-    --server https://127.0.0.1:6443 get no {{ kubelet_node_name[0] }}
+    --server https://127.0.0.1:6443 get node {{ kubelet_node_name }}
     -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}'
-  register: status_result
-  until: status_result.stdout.find("True") != -1
-  retries: "{{ check_node_ready_retries }}"
-  delay: "{{ check_node_ready_delay }}"
+  register: node_status_result
+  until: node_status_result.stdout.find("True") != -1
+  retries: "{{ check_node_ready_retries | default(30) }}"
+  delay: "{{ check_node_ready_delay | default(10) }}"
   changed_when: false
-  ignore_errors: "{{ check_node_ready_ignore_errors }}"
+  ignore_errors: "{{ check_node_ready_ignore_errors | default(false) }}"
 
-- name: Set fact
+- name: Set node ready fact
   ansible.builtin.set_fact:
-    rke2_node_ready: "true"
+    rke2_node_ready: true
   when:
-    - status_result.rc is not undefined
-    - status_result.rc | string == "0"
+    - node_status_result.rc is defined
+    - node_status_result.rc == 0
+    - node_status_result.stdout.find("True") != -1
 
-- name: Set fact
-  ansible.builtin.set_fact:
-    rke2_node_ready: "{{ rke2_node_ready }}"
+# Additional health checks
+- name: Check RKE2 server service status
+  ansible.builtin.systemd:
+    name: rke2-server
+  register: rke2_service_status
+  ignore_errors: true
 
-- name: Node status
+- name: Check kubelet service status  
+  ansible.builtin.systemd:
+    name: rke2-server
+  register: kubelet_service_status
+  ignore_errors: true
+
+# Comprehensive status report
+- name: RKE2 cluster health status
   ansible.builtin.debug:
     msg: |
-      "rke2_node_ready: {{ rke2_node_ready }}"
-      "rke2_metrics_running: {{ rke2_metrics_running }}"
-      "rke2_api_server_running: {{ rke2_api_server_running }}"
+      RKE2 Cluster Health Status:
+      ==========================
+      API Server Running: {{ rke2_api_server_running }}
+      Node Metrics Available: {{ rke2_metrics_running }}
+      Node Ready Status: {{ rke2_node_ready }}
+      Kubelet Node Name: {{ kubelet_node_name }}
+      RKE2 Service Active: {{ rke2_service_status.status.ActiveState | default('unknown') }}
+      
+      {% if not (rke2_api_server_running and rke2_metrics_running and rke2_node_ready) %}
+      ⚠️  HEALTH CHECK ISSUES DETECTED ⚠️
+      {% if not rke2_api_server_running %}
+      - API server not responding on port 6443
+      {% endif %}
+      {% if not rke2_metrics_running %}
+      - Node metrics endpoint not accessible
+      {% endif %}
+      {% if not rke2_node_ready %}
+      - Node not reporting Ready status
+      {% endif %}
+      {% else %}
+      ✅ All health checks passed
+      {% endif %}
+
+# Fail the playbook if critical components are not healthy (optional)
+- name: Fail if critical RKE2 components are not healthy
+  ansible.builtin.fail:
+    msg: |
+      RKE2 cluster health check failed. Critical issues detected:
+      - API Server: {{ 'OK' if rke2_api_server_running else 'FAILED' }}
+      - Node Ready: {{ 'OK' if rke2_node_ready else 'FAILED' }}
+  when:
+    - fail_on_health_check_failure | default(false)
+    - not (rke2_api_server_running and rke2_node_ready)
+
+# Set overall health status
+- name: Set overall RKE2 health status
+  ansible.builtin.set_fact:
+    rke2_cluster_healthy: "{{ rke2_api_server_running and rke2_metrics_running and rke2_node_ready }}"

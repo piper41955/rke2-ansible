@@ -1,107 +1,87 @@
 ---
 
-- name: Allow 9345
-  ansible.builtin.iptables:
-    action: insert
-    chain: INPUT
-    protocol: tcp
-    destination_port: "9345"
-    ctstate: NEW
-    jump: ACCEPT
-  when: inventory_hostname in groups['rke2_servers']
-
-- name: Allow 6443
-  ansible.builtin.iptables:
-    action: insert
-    chain: INPUT
-    protocol: tcp
-    destination_port: "6443"
-    ctstate: NEW
-    jump: ACCEPT
-  when: inventory_hostname in groups['rke2_servers']
-
-- name: Allow udp 8472
-  ansible.builtin.iptables:
-    action: insert
-    chain: INPUT
-    protocol: udp
-    destination_port: "8472"
-    ctstate: NEW
-    jump: ACCEPT
-
-- name: Allow 10250
-  ansible.builtin.iptables:
-    action: insert
-    chain: INPUT
-    protocol: tcp
-    destination_port: "10250"
-    ctstate: NEW
-    jump: ACCEPT
-
-- name: Allow 2379
-  ansible.builtin.iptables:
-    action: insert
-    chain: INPUT
-    protocol: tcp
-    destination_port: "2379"
-    ctstate: NEW
-    jump: ACCEPT
-  when: inventory_hostname in groups['rke2_servers']
-
-- name: Allow 2380
-  ansible.builtin.iptables:
-    action: insert
-    chain: INPUT
-    protocol: tcp
-    destination_port: "2380"
-    ctstate: NEW
-    jump: ACCEPT
-  when: inventory_hostname in groups['rke2_servers']
-
-- name: Allow 30000:32767
-  ansible.builtin.iptables:
-    action: insert
-    chain: INPUT
-    protocol: tcp
-    destination_port: "30000:32767"
-    ctstate: NEW
-    jump: ACCEPT
-
-- name: Allow 443
-  ansible.builtin.iptables:
-    action: insert
-    chain: INPUT
-    protocol: tcp
-    destination_port: "443"
-    ctstate: NEW
-    jump: ACCEPT
-
-- name: "Allow cluster-cidr forward"
+# Cluster CIDR Rules (Pod-to-Pod) - Updated for 172.16.0.0/16
+- name: "Allow cluster-cidr forward (source)"
   ansible.builtin.iptables:
     action: insert
     chain: FORWARD
-    source: '{{ rke2_config["cluster-cidr"] | default("10.42.0.0/16") | string }}'
+    source: '{{ rke2_cluster_cidr | default("172.16.0.0/16") | string }}'
     jump: ACCEPT
 
-- name: "Allow cluster-cidr forward"
+- name: "Allow cluster-cidr forward (destination)"
   ansible.builtin.iptables:
     action: insert
     chain: FORWARD
-    destination: '{{ rke2_config["cluster-cidr"] | default("10.42.0.0/16") | string }}'
+    destination: '{{ rke2_cluster_cidr | default("172.16.0.0/16") | string }}'
     jump: ACCEPT
 
-- name: "Allow cluster-cidr input"
+- name: "Allow cluster-cidr input (source)"
   ansible.builtin.iptables:
     action: insert
     chain: INPUT
-    source: '{{ rke2_config["cluster-cidr"] | default("10.42.0.0/16") | string }}'
+    source: '{{ rke2_cluster_cidr | default("172.16.0.0/16") | string }}'
     jump: ACCEPT
 
-- name: "Allow cluster-cidr input"
+- name: "Allow cluster-cidr input (destination)"
   ansible.builtin.iptables:
     action: insert
     chain: INPUT
-    destination: '{{ rke2_config["cluster-cidr"] | default("10.42.0.0/16") | string }}'
+    destination: '{{ rke2_cluster_cidr | default("172.16.0.0/16") | string }}'
+    jump: ACCEPT
+
+# Service CIDR Rules (Pod-to-Service) - CRITICAL FOR DNS
+- name: "Allow service-cidr forward (source)"
+  ansible.builtin.iptables:
+    action: insert
+    chain: FORWARD
+    source: '{{ rke2_service_cidr | default("172.17.0.0/16") | string }}'
+    jump: ACCEPT
+
+- name: "Allow service-cidr forward (destination)"
+  ansible.builtin.iptables:
+    action: insert
+    chain: FORWARD
+    destination: '{{ rke2_service_cidr | default("172.17.0.0/16") | string }}'
+    jump: ACCEPT
+
+- name: "Allow service-cidr input (source)"
+  ansible.builtin.iptables:
+    action: insert
+    chain: INPUT
+    source: '{{ rke2_service_cidr | default("172.17.0.0/16") | string }}'
+    jump: ACCEPT
+
+- name: "Allow service-cidr input (destination)"
+  ansible.builtin.iptables:
+    action: insert
+    chain: INPUT
+    destination: '{{ rke2_service_cidr | default("172.17.0.0/16") | string }}'
+    jump: ACCEPT
+
+# Pod-to-Service Communication (MOST IMPORTANT FOR DNS)
+- name: "Allow pods to reach services"
+  ansible.builtin.iptables:
+    action: insert
+    chain: FORWARD
+    source: '{{ rke2_cluster_cidr | default("172.16.0.0/16") | string }}'
+    destination: '{{ rke2_service_cidr | default("172.17.0.0/16") | string }}'
+    jump: ACCEPT
+
+- name: "Allow services to respond to pods"
+  ansible.builtin.iptables:
+    action: insert
+    chain: FORWARD
+    source: '{{ rke2_service_cidr | default("172.17.0.0/16") | string }}'
+    destination: '{{ rke2_cluster_cidr | default("172.16.0.0/16") | string }}'
+    jump: ACCEPT
+
+# Allow all traffic within service CIDR (for service mesh communication)
+- name: "Allow service-to-service communication"
+  ansible.builtin.iptables:
+    action: insert
+    chain: FORWARD
+    source: '{{ rke2_service_cidr | default("172.17.0.0/16") | string }}'
+    destination: '{{ rke2_service_cidr | default("172.17.0.0/16") | string }}'
     jump: ACCEPT
 
 - name: Save iptables

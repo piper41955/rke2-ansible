@@ -1,24 +1,8 @@
 ---
-- name: Deploy RKE2 with NSX Container Plugin
+
+- name: RKE2 play
   hosts: all
-  become: true
-
-  pre_tasks:
-      - name: Validate NSX configuration
-        ansible.builtin.assert:
-            that:
-                - nsx_manager_host is defined
-                - nsx_username is defined
-                - nsx_password is defined
-                - nsx_cluster_name is defined
-            fail_msg: "NSX configuration variables must be defined"
-  roles:
-      - role: common
-      - role: nsx-prerequisites
-      - role: rke2
-
-- name: Deploy NSX Container Plugin Operator
-  hosts: masters[0]
+  any_errors_fatal: true
   become: true
   roles:
-      - role: nsx-operator
+    - role: rke2
