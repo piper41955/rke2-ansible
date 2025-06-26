@@ -1,150 +1,146 @@
 ---
-
 - name: Create the /etc/rancher/rke2 config dir
   ansible.builtin.file:
     path: /etc/rancher/rke2
     state: directory
     recurse: true
+    mode: '0755'
+    owner: root
+    group: root
 
 - name: Run CIS-Hardening Tasks
   ansible.builtin.include_tasks: cis_hardening.yml
 
-- name: Include task file add-systemd-env.yml
+- name: Include task file for systemd environment configuration
   ansible.builtin.include_tasks: add_ansible_managed_config.yml
   vars:
     file_contents: "{{ lookup('file', rke2_systemd_env_config_file_path) }}"
     file_destination: "/etc/default/{{ service_name }}"
     file_description: "systemd env options"
     file_path: "{{ rke2_systemd_env_config_file_path }}"
+    validate_yaml: false
 
-- name: "Include task file add_ansible_managed_config.yml for {{ file_description }}"
+- name: Include task file for registry configuration
   ansible.builtin.include_tasks: add_ansible_managed_config.yml
   vars:
     file_contents: "{{ lookup('file', rke2_registry_config_file_path) }}"
     file_destination: "/etc/rancher/rke2/registries.yaml"
     file_description: "registry configuration"
     file_path: "{{ rke2_registry_config_file_path }}"
+    validate_yaml: true
+  when: rke2_registry_config_file_path is defined and rke2_registry_config_file_path | length > 0
 
-- name: "Include task file add_ansible_managed_config.yml for {{ file_description }}"
+- name: Include task file for audit policy configuration
   ansible.builtin.include_tasks: add_ansible_managed_config.yml
   vars:
     file_contents: "{{ lookup('file', rke2_audit_policy_config_file_path) }}"
     file_destination: "/etc/rancher/rke2/audit-policy.yaml"
     file_description: "audit policy configuration"
     file_path: "{{ rke2_audit_policy_config_file_path }}"
+    validate_yaml: true
   when:
     - inventory_hostname in groups['rke2_servers']
+    - rke2_audit_policy_config_file_path is defined
+    - rke2_audit_policy_config_file_path | length > 0
 
-- name: "Include task file add_ansible_managed_config.yml for {{ file_description }}"
+- name: Include task file for pod security admission config
   ansible.builtin.include_tasks: add_ansible_managed_config.yml
   vars:
     file_contents: "{{ lookup('file', rke2_pod_security_admission_config_file_path) }}"
     file_destination: "/etc/rancher/rke2/pod-security-admission-config.yaml"
     file_description: "pod security admission config"
     file_path: "{{ rke2_pod_security_admission_config_file_path }}"
+    validate_yaml: true
   when:
     - inventory_hostname in groups['rke2_servers']
+    - rke2_pod_security_admission_config_file_path is defined
+    - rke2_pod_security_admission_config_file_path | length > 0
 
-- name: Generate RKE2 main configuration
-  ansible.builtin.set_fact:
-    rke2_main_config_content: |
-      {% if rke2_server is defined and inventory_hostname not in groups['rke2_servers'][:1] %}
-      server: {{ rke2_server }}
-      {% endif %}
-      {% if rke2_token is defined %}
-      token: {{ rke2_token }}
-      {% endif %}
-      {% if rke2_cluster_cidr is defined %}
-      cluster-cidr: "{{ rke2_cluster_cidr }}"
-      {% endif %}
-      {% if rke2_service_cidr is defined %}
-      service-cidr: "{{ rke2_service_cidr }}"
-      {% endif %}
-      {% if rke2_cluster_dns is defined %}
-      cluster-dns: "{{ rke2_cluster_dns }}"
-      {% endif %}
-      {% if rke2_cni is defined %}
-      cni: {{ rke2_cni }}
-      {% endif %}
-      {% if rke2_node_ip is defined %}
-      node-ip: {{ rke2_node_ip }}
-      {% endif %}
-      {% if rke2_advertise_address is defined %}
-      advertise-address: {{ rke2_advertise_address }}
-      {% endif %}
-      {% if rke2_tls_san is defined %}
-      tls-san:
-      {% for san in rke2_tls_san %}
-        - {{ san }}
-      {% endfor %}
-      {% endif %}
-      {% if rke2_write_kubeconfig_mode is defined %}
-      write-kubeconfig-mode: "{{ rke2_write_kubeconfig_mode }}"
-      {% endif %}
-      {% if rke2_cni == "canal" and rke2_canal_config is defined %}
-      helm-chart-values:
-        - name: rke2-canal
-          namespace: kube-system
-          values:
-            flannel:
-              backend: "vxlan"
-              iface: "{{ rke2_canal_config.flannel.interface }}"
-              vxlan:
-                port: {{ rke2_canal_config.flannel.vxlan_port }}
-            calico:
-              calicoNetwork:
-                mtu: {{ rke2_canal_config.calico.mtu }}
-              nodeAddressAutodetectionV4:
-                interface: "{{ rke2_canal_config.calico.ip_autodetection_method }}"
-              felix:
-                failsafeInboundHostPorts:
-                  - protocol: tcp
-                    port: 22
-                  - protocol: udp
-                    port: 68
-                  - protocol: tcp
-                    port: 179
-                  - protocol: tcp
-                    port: 2379
-                  - protocol: tcp
-                    port: 2380
-                  - protocol: tcp
-                    port: 6443
-                  - protocol: tcp
-                    port: 6666
-                  - protocol: tcp
-                    port: 6667
-                  - protocol: udp
-                    port: {{ rke2_canal_config.flannel.vxlan_port }}
-                iptablesFilterAllowAction: "ACCEPT"
-                iptablesMangleAllowAction: "ACCEPT"
-      {% endif %}
+- name: Generate RKE2 main configuration using template
+  ansible.builtin.template:
+    src: rke2_config.yaml.j2
+    dest: "/etc/rancher/rke2/config.yaml"
+    mode: '0640'
+    owner: root
+    group: root
+    backup: true
+  notify: "Restart {{ service_name }}"
+
+- name: Validate RKE2 configuration syntax
+  ansible.builtin.shell: |
+    python3 -c "
+    import yaml
+    try:
+        with open('/etc/rancher/rke2/config.yaml', 'r') as f:
+            config = yaml.safe_load(f)
+        print('YAML syntax is valid')
+        print(f'Configuration contains {len(config)} top-level keys')
+        if 'helm-chart-values' in config:
+            print(f'Found {len(config[\"helm-chart-values\"])} helm chart configurations')
+    except yaml.YAMLError as e:
+        print(f'YAML Error: {e}')
+        exit(1)
+    except Exception as e:
+        print(f'File Error: {e}')
+        exit(1)
+    "
+  register: yaml_validation
+  changed_when: false
+  failed_when: yaml_validation.rc != 0
+
+- name: Show RKE2 configuration validation results
+  ansible.builtin.debug:
+    var: yaml_validation.stdout_lines
+  when: ansible_verbosity >= 1
+
+- name: Display RKE2 configuration summary
+  ansible.builtin.debug:
+    msg: |
+      RKE2 Configuration Summary:
+      - Node Type: {{ 'Server' if inventory_hostname in groups['rke2_servers'] else 'Agent' }}
+      - Node IP: {{ rke2_node_ip | default(ansible_default_ipv4.address) }}
+      - CNI: {{ rke2_cni | default('canal') }}
+      - Cluster CIDR: {{ rke2_cluster_cidr | default('172.16.0.0/16') }}
+      - Service CIDR: {{ rke2_service_cidr | default('172.17.0.0/16') }}
       {% if rke2_coredns_forwarders is defined %}
-        - name: rke2-coredns
-          namespace: kube-system
-          values:
-            servers:
-              - zones:
-                  - zone: .
-                plugins:
-                  - name: forward
-                    parameters: . {{ rke2_coredns_forwarders | join(' ') }}
-                    configBlock: |-
-                      except cluster.local
+      - DNS Forwarders: {{ rke2_coredns_forwarders | join(', ') }}
+      {% endif %}
+      {% if rke2_canal_config is defined %}
+      - Canal Interface: {{ rke2_canal_config.flannel.interface | default('ens192') }}
+      - VXLAN Port: {{ rke2_canal_config.flannel.vxlan_port | default(8472) }}
       {% endif %}
 
-- name: "Include task file add_ansible_managed_config.yml for RKE2 main config"
-  ansible.builtin.include_tasks: add_ansible_managed_config.yml
-  vars:
-    file_contents: "{{ rke2_main_config_content }}"
-    file_destination: "/etc/rancher/rke2/config.yaml"
-    file_description: "RKE2 main configuration"
-    file_path: "/etc/rancher/rke2/config.yaml"
-
-- name: Restart RKE2 service after config change
+- name: Start and enable RKE2 service
   ansible.builtin.service:
     name: "{{ service_name }}"
-    state: restarted
-  when: 
-    - file_path is defined
-    - file_path | length > 0
+    state: started
+    enabled: true
+  register: rke2_service_start
+  retries: 3
+  delay: 10
+  until: rke2_service_start is succeeded
+
+- name: Wait for RKE2 to be ready
+  ansible.builtin.wait_for:
+    port: 6443
+    host: "{{ ansible_default_ipv4.address }}"
+    delay: 30
+    timeout: 300
+  when: inventory_hostname in groups['rke2_servers']
+
+- name: Verify RKE2 cluster status
+  ansible.builtin.shell: |
+    export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+    /var/lib/rancher/rke2/bin/kubectl get nodes
+  register: cluster_status
+  changed_when: false
+  failed_when: false
+  when: inventory_hostname in groups['rke2_servers'][0:1]
+
+- name: Show cluster status
+  ansible.builtin.debug:
+    var: cluster_status.stdout_lines
+  when:
+    - cluster_status is defined
+    - cluster_status.rc == 0
+    - ansible_verbosity >= 1

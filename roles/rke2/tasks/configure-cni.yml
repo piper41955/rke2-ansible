@@ -11,17 +11,6 @@
     mode: '0755'
   when: inventory_hostname in groups['rke2_servers']
 
-# - name: Create RKE2 CoreDNS HelmChartConfig
-#  ansible.builtin.template:
-#     src: rke2_dns_config.j2
-#     dest: /var/lib/rancher/rke2/server/manifests/rke2-coredns-config.yaml
-#     owner: root
-#     group: root
-#     mode: '0644'
-#   when:
-#     - inventory_hostname in groups['rke2_servers']
-#     - rke2_coredns_config is defined
-#   notify: Restart rke2-server
 
 - name: Deploy Cilium HelmChartConfig
   ansible.builtin.template:

@@ -1,37 +1,130 @@
 ---
-- name: "Add {{ file_description }} file"  # noqa name[template]
+- name: "Debug file management variables"
+  ansible.builtin.debug:
+    msg: |
+      file_path: "{{ file_path | default('UNDEFINED') }}"
+      file_destination: "{{ file_destination | default('UNDEFINED') }}"
+      file_description: "{{ file_description | default('UNDEFINED') }}"
+      file_path length: {{ file_path | default("") | length }}
+      Should create file: {{ (file_path | default("") | length != 0) }}
+      Template mode: {{ template_mode | default(false) }}
+  when: ansible_verbosity >= 2
+
+- name: "Add {{ file_description }} file (template mode)"  # noqa name[template]
   ansible.builtin.template:
-    src: ansible_managed_yaml.j2
+    src: "{{ template_src }}"
     dest: "{{ file_destination }}"
     mode: '0640'
     owner: root
     group: root
+    backup: true
   when:
-    - file_path | default("") | length != 0
+    - file_path | default("") | length > 0
+    - file_destination | default("") | length > 0
+    - template_mode | default(false)
+    - template_src is defined
   notify: "Restart {{ service_name }}"
+
+- name: "Add {{ file_description }} file (copy mode)"  # noqa name[template]
+  ansible.builtin.copy:
+    content: |
+      ## This is an Ansible managed file, contents will be overwritten ##
+      {{ file_contents }}
+    dest: "{{ file_destination }}"
+    mode: '0640'
+    owner: root
+    group: root
+    backup: true
+  when:
+    - file_path | default("") | length > 0
+    - file_destination | default("") | length > 0
+    - not (template_mode | default(false))
+    - file_contents is defined
+    - file_contents | length > 0
+  notify: "Restart {{ service_name }}"
+
+- name: "Add {{ file_description }} file from source file"  # noqa name[template]
+  ansible.builtin.copy:
+    content: |
+      ## This is an Ansible managed file, contents will be overwritten ##
+      {{ lookup('file', file_path) }}
+    dest: "{{ file_destination }}"
+    mode: '0640'
+    owner: root
+    group: root
+    backup: true
+  when:
+    - file_path | default("") | length > 0
+    - file_destination | default("") | length > 0
+    - not (template_mode | default(false))
+    - file_contents is not defined
+    - file_path is file
+  notify: "Restart {{ service_name }}"
+
+- name: "Validate YAML syntax for {{ file_description }}"
+  ansible.builtin.shell: |
+    python3 -c "
+    import yaml
+    try:
+        with open('{{ file_destination }}', 'r') as f:
+            yaml.safe_load(f)
+        print('YAML syntax is valid')
+    except yaml.YAMLError as e:
+        print(f'YAML Error: {e}')
+        exit(1)
+    except Exception as e:
+        print(f'File Error: {e}')
+        exit(1)
+    "
+  register: yaml_validation
+  when:
+    - file_path | default("") | length > 0
+    - file_destination | default("") | length > 0
+    - file_destination.endswith('.yaml') or file_destination.endswith('.yml')
+    - validate_yaml | default(true)
+  changed_when: false
+  failed_when: yaml_validation.rc != 0
+
+- name: "Show YAML validation result for {{ file_description }}"
+  ansible.builtin.debug:
+    var: yaml_validation.stdout
+  when: 
+    - yaml_validation is defined
+    - ansible_verbosity >= 1
 
 - name: "Remove {{ file_description }} file"  # noqa name[template]
   when:
     - file_path | default("") | length == 0
+    - file_destination | default("") | length > 0
   block:
     - name: "Check that the {{ file_description }} file exists"  # noqa name[template]
       ansible.builtin.stat:
         path: "{{ file_destination }}"
       register: stat_result
 
-    - name: "Check that the {{ file_description }} config file has ansible managed comments"  # noqa name[template]
+    - name: "Check if {{ file_description }} file has ansible managed header"  # noqa name[template]
       ansible.builtin.lineinfile:
-        name: "{{ file_destination }}"
+        path: "{{ file_destination }}"
         line: '## This is an Ansible managed file, contents will be overwritten ##'
         state: present
       check_mode: true
       register: ansible_managed_check
-      when: stat_result.stat.exists | bool is true
+      when: stat_result.stat.exists
 
-    - name: "Remove the {{ file_description }} file if exists and has ansible managed comments"  # noqa name[template]
+    - name: "Remove {{ file_description }} file if it has ansible managed header"  # noqa name[template]
       ansible.builtin.file:
         path: "{{ file_destination }}"
         state: absent
       when:
-        - ansible_managed_check.changed | bool is false  # noqa no-handler
+        - stat_result.stat.exists
+        - ansible_managed_check is defined
+        - not ansible_managed_check.changed  # File already has the header
       notify: "Restart {{ service_name }}"
+
+    - name: "Warning about unmanaged file"
+      ansible.builtin.debug:
+        msg: "WARNING: {{ file_destination }} exists but is not Ansible managed. Skipping removal."
+      when:
+        - stat_result.stat.exists
+        - ansible_managed_check is defined
+        - ansible_managed_check.changed  # File doesn't have the header
