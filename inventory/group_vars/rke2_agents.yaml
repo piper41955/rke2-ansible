@@ -1,0 +1,7 @@
+rke2_config:
+  # Node labels for worker nodes
+  node-label:
+    - "node-role.kubernetes.io/worker=true"
+    - "node.kubernetes.io/instance-type=worker"
+    - "cluster-role=agent"
+    - "workload-type=application"

@@ -2,7 +2,7 @@
 {% if rke2_server is defined and inventory_hostname not in groups['rke2_servers'][:1] %}
 server: {{ rke2_server }}
 {% endif %}
-{% if rke2_token is defined %}
+{% if rke2_token is defined and rke2_token | length > 0 %}
 token: {{ rke2_token }}
 {% endif %}
 {% if rke2_cluster_cidr is defined %}
@@ -39,35 +39,32 @@ helm-chart-values:
     namespace: kube-system
     values:
       flannel:
-        backend: "vxlan"
         iface: "{{ rke2_canal_config.flannel.interface }}"
-        vxlan:
-          port: "{{ rke2_canal_config.flannel.vxlan_port }}"
+        backend: "vxlan"
+        vxlanPort: {{ rke2_canal_config.flannel.vxlan_port }}
       calico:
-        calicoNetwork:
-          mtu: "{{ rke2_canal_config.calico.mtu }}"
-        nodeAddressAutodetectionV4:
-          interface: "{{ rke2_canal_config.calico.interface }}"
-        felix:
+        autoDetectionMethod: "{{ rke2_canal_config.calico.interface }}"
+        mtu: {{ rke2_canal_config.calico.mtu }}
+        felixConfiguration:
           failsafeInboundHostPorts:
-            - protocol: tcp
-              port: "22"
-            - protocol: udp
-              port: "68"
-            - protocol: tcp
-              port: "179"
-            - protocol: tcp
-              port: "2379"
-            - protocol: tcp
-              port: "2380"
-            - protocol: tcp
-              port: "6443"
-            - protocol: tcp
-              port: "6666"
-            - protocol: tcp
-              port: "6667"
-            - protocol: udp
-              port: "{{ rke2_canal_config.flannel.vxlan_port }}"
+            - protocol: TCP
+              port: 22
+            - protocol: UDP
+              port: 68
+            - protocol: TCP
+              port: 179
+            - protocol: TCP
+              port: 2379
+            - protocol: TCP
+              port: 2380
+            - protocol: TCP
+              port: 6443
+            - protocol: TCP
+              port: 6666
+            - protocol: TCP
+              port: 6667
+            - protocol: UDP
+              port: {{ rke2_canal_config.flannel.vxlan_port }}
           iptablesFilterAllowAction: "ACCEPT"
           iptablesMangleAllowAction: "ACCEPT"
 {% endif %}

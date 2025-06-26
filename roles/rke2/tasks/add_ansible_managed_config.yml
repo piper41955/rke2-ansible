@@ -88,7 +88,7 @@
 - name: "Show YAML validation result for {{ file_description }}"
   ansible.builtin.debug:
     var: yaml_validation.stdout
-  when: 
+  when:
     - yaml_validation is defined
     - ansible_verbosity >= 1
 
