@@ -9,7 +9,7 @@ group_rke2_config:
   cni:
     - cilium
   # Cilium will replace this
-  disable-kube-proxy: true
+  disable-kube-proxy: false
   profile: cis
   pod-security-admission-config-file: /etc/rancher/rke2/pod-security-admission-config.yaml
   audit-policy-file: /etc/rancher/rke2/audit-policy.yaml

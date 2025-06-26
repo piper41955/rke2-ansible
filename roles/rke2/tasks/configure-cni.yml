@@ -1,4 +1,9 @@
 ---
+- name: Add pre-requisites
+  ansible.builtin.apt:
+    name:
+      - python3-kubernetes
+
 - name: Create RKE2 manifests directory
   ansible.builtin.file:
     path: /var/lib/rancher/rke2/server/manifests
@@ -6,18 +11,17 @@
     mode: '0755'
   when: inventory_hostname in groups['rke2_servers']
 
-- name: Deploy Canal HelmChartConfig
-  ansible.builtin.template:
-    src: rke2-canal-config.yaml.j2
-    dest: /var/lib/rancher/rke2/server/manifests/rke2-canal-config.yaml
-    mode: '0644'
-    owner: root
-    group: root
-  when:
-    - inventory_hostname in groups['rke2_servers']
-    - rke2_cni == "canal"
-    - rke2_canal_config is defined
-  notify: Restart rke2-server
+# - name: Create RKE2 CoreDNS HelmChartConfig
+#  ansible.builtin.template:
+#     src: rke2_dns_config.j2
+#     dest: /var/lib/rancher/rke2/server/manifests/rke2-coredns-config.yaml
+#     owner: root
+#     group: root
+#     mode: '0644'
+#   when:
+#     - inventory_hostname in groups['rke2_servers']
+#     - rke2_coredns_config is defined
+#   notify: Restart rke2-server
 
 - name: Deploy Cilium HelmChartConfig
   ansible.builtin.template:

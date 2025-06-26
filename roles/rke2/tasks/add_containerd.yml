@@ -5,8 +5,8 @@
     src: /run/systemd/resolve/resolv.conf
     dest: /etc/resolv.conf
     state: link
-    force: yes
-  become: yes
+    force: true
+  become: true
 
 - name: Update apt cache
   ansible.builtin.apt:
@@ -27,9 +27,9 @@
 - name: Install kubectl snap
   community.general.snap:
     name: kubectl
-    classic: yes
+    classic: true
     state: present
-  become: yes
+  become: true
 
 - name: Create containerd configuration directory
   ansible.builtin.file:

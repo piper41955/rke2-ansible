@@ -1,34 +1,44 @@
-.:53 {
-    errors
-    health {
-        lameduck 10s
-    }
-    ready
-    kubernetes cluster.local cluster.local in-addr.arpa ip6.arpa {
-        pods insecure
-        fallthrough in-addr.arpa ip6.arpa
-        ttl 30
-    }
-    prometheus 0.0.0.0:9153
-    forward . "10.31.10.10" "10.31.10.11" {
-        max_concurrent 1000
-        prefer_udp
-        policy sequential
-    }
-    cache 30
-    loop
-    reload
-    loadbalance
-}
-
-jgsdev.xyz:53 {
-    errors
-    cache 30
-    forward . "10.31.10.10" "10.31.10.11"
-}
-
-johngalt.local:53 {
-    errors
-    cache 30
-    forward . "10.31.10.10" "10.31.10.11"
-}
+{% if rke2_coredns_config is defined %}
+---
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: rke2-coredns
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    servers:
+    - zones:
+      - zone: .
+        scheme: dns://
+        use_tcp: false
+      port: 53
+      plugins:
+      - name: errors
+      - name: health
+        configBlock: |-
+          lameduck 10s
+      - name: ready
+      - name: kubernetes
+        parameters: {{ rke2_cluster_domain | default('cluster.local') }} in-addr.arpa ip6.arpa
+        configBlock: |-
+          pods insecure
+          fallthrough in-addr.arpa ip6.arpa
+          ttl 30
+      - name: prometheus
+        parameters: 0.0.0.0:9153
+      - name: forward
+        parameters: . {{ rke2_coredns_config.forward_to | join(' ') }}
+        configBlock: |-
+{% if rke2_coredns_config.forward_policy is defined %}
+          policy {{ rke2_coredns_config.forward_policy }}
+{% endif %}
+{% if rke2_coredns_config.health_check is defined and rke2_coredns_config.health_check %}
+          health_check 5s
+{% endif %}
+      - name: cache
+        parameters: {{ rke2_coredns_config.cache_ttl | default(30) }}
+      - name: loop
+      - name: reload
+      - name: loadbalance
+{% endif %}

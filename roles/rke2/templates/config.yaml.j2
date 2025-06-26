@@ -1,3 +1,33 @@
+# Server/Token (for joining cluster)
+{% if rke2_server is defined %}
+server: {{ rke2_server }}
+{% endif %}
+{% if rke2_token is defined %}
+token: {{ rke2_token }}
+{% endif %}
+
+# Network CIDR Configuration
+{% if rke2_cluster_cidr is defined %}
+cluster-cidr: "{{ rke2_cluster_cidr }}"
+{% endif %}
+{% if rke2_service_cidr is defined %}
+service-cidr: "{{ rke2_service_cidr }}"
+{% endif %}
+{% if rke2_cluster_dns is defined %}
+cluster-dns: "{{ rke2_cluster_dns }}"
+{% elif rke2_service_cidr is defined %}
+cluster-dns: "{{ rke2_service_cidr | ansible.utils.ipaddr('net') | ansible.utils.ipaddr('10') | ansible.utils.ipaddr('address') }}"
+{% endif %}
+
+# Basic configuration
+{% if rke2_write_kubeconfig_mode is defined %}
+write-kubeconfig-mode: "{{ rke2_write_kubeconfig_mode }}"
+{% endif %}
+{% if rke2_advertise_address is defined %}
+advertise-address: {{ rke2_advertise_address }}
+{% endif %}
+
+# CNI Configuration
 {% if rke2_cni is defined %}
 cni: {{ rke2_cni }}
 {% endif %}
@@ -28,4 +58,92 @@ disable:
 {% for component in rke2_disable %}
   - {{ component }}
 {% endfor %}
+{% endif %}
+
+# Also add kubelet args as backup
+{% if rke2_cluster_dns is defined %}
+kubelet-arg:
+  - "cluster-dns={{ rke2_cluster_dns }}"
+  - "cluster-domain=cluster.local"
+{% endif %}
+
+{% if rke2_cni == "canal" and rke2_canal_config is defined %}
+helm-chart-values:
+  - name: rke2-canal
+    namespace: kube-system
+    values:
+      flannel:
+        backend: "vxlan"
+        iface: "{{ rke2_canal_config.flannel.interface }}"
+        vxlan:
+          port: {{ rke2_canal_config.flannel.vxlan_port }}
+      calico:
+        calicoNetwork:
+          mtu: {{ rke2_canal_config.calico.mtu }}
+{% if rke2_cluster_cidr is defined %}
+          ipPools:
+            - cidr: "{{ rke2_cluster_cidr }}"
+              encapsulation: None
+              natOutgoing: Enabled
+              nodeSelector: all()
+{% endif %}
+        nodeAddressAutodetectionV4:
+          interface: "{{ rke2_canal_config.calico.ip_autodetection_method }}"
+{% if rke2_service_cidr is defined %}
+        serviceCIDRs:
+          - "{{ rke2_service_cidr }}"
+{% endif %}
+        felix:
+          failsafeInboundHostPorts:
+            - protocol: tcp
+              port: 22
+            - protocol: udp
+              port: 68
+            - protocol: tcp
+              port: 179
+            - protocol: tcp
+              port: 2379
+            - protocol: tcp
+              port: 2380
+            - protocol: tcp
+              port: 6443
+            - protocol: tcp
+              port: 6666
+            - protocol: tcp
+              port: 6667
+            - protocol: udp
+              port: {{ rke2_canal_config.flannel.vxlan_port }}
+          iptablesFilterAllowAction: "ACCEPT"
+          iptablesMangleAllowAction: "ACCEPT"
+{% endif %}
+  - name: rke2-coredns
+    namespace: kube-system
+    values:
+      servers:
+        - zones:
+            - zone: .
+          port: 53
+          plugins:
+            - name: errors
+            - name: health
+              configBlock: |-
+                lameduck 5s
+            - name: ready
+            - name: kubernetes
+              parameters: cluster.local in-addr.arpa ip6.arpa
+              configBlock: |-
+                pods insecure
+                fallthrough in-addr.arpa ip6.arpa
+                ttl 30
+            - name: prometheus
+              parameters: :9153
+            - name: forward
+              parameters: . {{ rke2_coredns_forwarders | join(' ') }}
+              configBlock: |-
+                except cluster.local in-addr.arpa ip6.arpa
+            - name: cache
+              parameters: 30
+            - name: loop
+            - name: reload
+            - name: loadbalance
 {% endif %}

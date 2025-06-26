@@ -90,7 +90,7 @@
   register: rke2_service_status
   ignore_errors: true
 
-- name: Check kubelet service status  
+- name: Check kubelet service status
   ansible.builtin.systemd:
     name: rke2-server
   register: kubelet_service_status
@@ -107,7 +107,6 @@
       Node Ready Status: {{ rke2_node_ready }}
       Kubelet Node Name: {{ kubelet_node_name }}
       RKE2 Service Active: {{ rke2_service_status.status.ActiveState | default('unknown') }}
-      
       {% if not (rke2_api_server_running and rke2_metrics_running and rke2_node_ready) %}
       ⚠️  HEALTH CHECK ISSUES DETECTED ⚠️
       {% if not rke2_api_server_running %}

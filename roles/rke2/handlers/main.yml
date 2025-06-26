@@ -57,3 +57,37 @@
   throttle: 1
   when:
     - rke2_reboot
+
+- name: Restart canal pods
+  kubernetes.core.k8s:
+    kubeconfig: /etc/rancher/rke2/rke2.yaml
+    state: present
+    api_version: apps/v1
+    kind: DaemonSet
+    name: rke2-canal
+    namespace: kube-system
+    definition:
+      spec:
+        template:
+          metadata:
+            annotations:
+              kubectl.kubernetes.io/restartedAt: "{{ ansible_date_time.iso8601 }}"
+  when: inventory_hostname == groups['rke2_servers'][0]
+  delegate_to: "{{ groups['rke2_servers'][0] }}"
+
+- name: Restart coredns pods
+  kubernetes.core.k8s:
+    kubeconfig: /etc/rancher/rke2/rke2.yaml
+    state: present
+    api_version: apps/v1
+    kind: Deployment
+    name: rke2-coredns-rke2-coredns
+    namespace: kube-system
+    definition:
+      spec:
+        template:
+          metadata:
+            annotations:
+              kubectl.kubernetes.io/restartedAt: "{{ ansible_date_time.iso8601 }}"
+  when: inventory_hostname == groups['rke2_servers'][0]
+  delegate_to: "{{ groups['rke2_servers'][0] }}"

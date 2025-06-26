@@ -71,6 +71,9 @@
 - name: Set rke2 configuration files
   ansible.builtin.include_tasks: configure_rke2.yml
 
+- name: Configure CNI
+  ansible.builtin.include_tasks: configure-cni.yml
+
 - name: Include task file add_manifest_addons.yml
   ansible.builtin.include_tasks: add_manifest_addons.yml
   vars:
@@ -106,12 +109,6 @@
   when:
     - ready_servers | length > 0
 
-- name: Configure CNI
-  ansible.builtin.include_tasks: configure-cni.yml
-
-- name: Configure Iptables
-  ansible.builtin.include_tasks: iptables_rules.yml
-
 - name: Start all other rke2 nodes
   ansible.builtin.include_tasks: other_nodes.yml
 
@@ -137,4 +134,3 @@
     mode: '0644'
     owner: root
     group: root
-

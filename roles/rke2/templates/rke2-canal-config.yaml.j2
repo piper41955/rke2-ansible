@@ -8,24 +8,38 @@ metadata:
 spec:
   valuesContent: |-
     flannel:
-      {% if rke2_canal_config.flannel is defined %}
-      {% if rke2_canal_config.flannel.interface is defined %}
-      iface: {{ rke2_canal_config.flannel.interface }}
-      {% endif %}
-      {% if rke2_canal_config.flannel.backend_type is defined %}
-      backend_type: {{ rke2_canal_config.flannel.backend_type }}
-      {% endif %}
-      {% if rke2_canal_config.flannel.vxlan_port is defined %}
-      vxlan_port: {{ rke2_canal_config.flannel.vxlan_port }}
-      {% endif %}
-      {% endif %}
+      iface: "{{ rke2_canal_config.flannel.interface }}"
+      backend: "vxlan"
+      vxlan:
+            port: {{ rke2_canal_config.flannel.vxlan_port }}
     calico:
-      {% if rke2_canal_config.calico is defined %}
-      {% if rke2_canal_config.calico.mtu is defined %}
-      mtu: {{ rke2_canal_config.calico.mtu }}
-      {% endif %}
-      {% if rke2_canal_config.calico.ip_autodetection_method is defined %}
-      ip_autodetection_method: "{{ rke2_canal_config.calico.ip_autodetection_method }}"
-      {% endif %}
-      {% endif %}
+      calicoNetwork:
+        mtu: {{ rke2_canal_config.calico.mtu }}
+      nodeAddressAutodetectionV4:
+        interface: "{{ rke2_canal_config.calico.ip_autodetection_method }}"
+      # Configure Felix to handle custom VXLAN port
+      felix:
+        # Allow custom VXLAN port in failsafe rules
+        failsafeInboundHostPorts: |
+          - protocol: tcp
+            port: 22
+          - protocol: udp  
+            port: 68
+          - protocol: tcp
+            port: 179
+          - protocol: tcp
+            port: 2379
+          - protocol: tcp
+            port: 2380
+          - protocol: tcp
+            port: 6443
+          - protocol: tcp
+            port: 6666
+          - protocol: tcp
+            port: 6667
+          - protocol: udp
+            port: {{ rke2_canal_config.flannel.vxlan_port }}
+        # Ensure VXLAN traffic is properly handled
+        iptablesFilterAllowAction: "ACCEPT"
+        iptablesMangleAllowAction: "ACCEPT"
 {% endif %}
