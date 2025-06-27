@@ -1,6 +1,27 @@
 ---
+- name: "Allow inbound VXLAN traffic from cluster nodes"
+  ansible.builtin.iptables:
+    chain: INPUT
+    source: "{{ rke2_host_net }}"
+    protocol: udp
+    destination_port: "{{ rke2_canal_vxlan_port | default(8472) }}"
+    jump: ACCEPT
+    action: insert
+    rule_num: 1
+  when: rke2_cni == "canal"
 
-# Cluster CIDR Rules (Pod-to-Pod) - Updated for 172.16.0.0/16
+- name: "Allow outbound VXLAN traffic to cluster nodes"
+  ansible.builtin.iptables:
+    chain: OUTPUT
+    destination: "{{ rke2_host_net }}"
+    protocol: udp
+    destination_port: "{{ rke2_canal_vxlan_port | default(8472) }}"
+    jump: ACCEPT
+    action: insert
+    rule_num: 1
+  when: rke2_cni == "canal"
+
+# Pod/Service Traffic (After VXLAN Decapsulation) - Your existing rules
 - name: "Allow cluster-cidr forward (source)"
   ansible.builtin.iptables:
     action: insert
@@ -83,21 +104,3 @@
     source: '{{ rke2_service_cidr | default("172.17.0.0/16") | string }}'
     destination: '{{ rke2_service_cidr | default("172.17.0.0/16") | string }}'
     jump: ACCEPT
-
-- name: Save iptables
-  ansible.builtin.shell: "iptables-save > /etc/sysconfig/iptables"
-  become: true
-  changed_when: false
-  when: ansible_facts['os_family'] == 'RedHat'
-
-- name: Install iptables-persistent
-  ansible.builtin.apt:
-    name: iptables-persistent
-    state: present
-  when: ansible_facts['os_family'] == 'Debian'
-
-- name: Save iptables
-  ansible.builtin.shell: "iptables-save > /etc/iptables/rules.v4"
-  become: true
-  changed_when: false
-  when: ansible_facts['os_family'] == 'Debian'

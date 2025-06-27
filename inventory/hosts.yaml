@@ -1,85 +1,28 @@
 all:
-  vars:
-    # Cluster API and Token Configuration
-    rke2_kubernetes_api_server_host: "10.31.44.100"
-    rke2_server: "https://{{ rke2_kubernetes_api_server_host }}:9345"  # FIXED: Use port 9345 for registration
-    rke2_token: "initialtoken"
-    
-    # Service name determination
-    service_name: "{{ 'rke2-server' if inventory_hostname in groups['rke2_servers'] else 'rke2-agent' }}"
-
-    # DNS Configuration
-    rke2_coredns_forwarders:
-      - "10.31.10.10"
-      - "10.31.10.11"
-
-    # Proxy Configuration
-    http_proxy: "http://10.31.10.15:3128"
-    https_proxy: "http://10.31.10.15:3128"
-    no_proxy: "localhost,.jgsdev.xyz,.jgs.app,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,.svc,.cluster.local,{{ ansible_default_ipv4.network }}/{{ ansible_default_ipv4.netmask }}"
-
-    # Network Configuration
-    rke2_cluster_cidr: "172.16.0.0/16"
-    rke2_service_cidr: "172.17.0.0/16"
-    rke2_cluster_dns: "172.17.0.10"
-    rke2_cni: "canal"
-    rke2_write_kubeconfig_mode: "0644"
-
-    # FIXED: Canal CNI Configuration
-    rke2_canal_config:
-      flannel:
-        interface: "ens192"
-        vxlan_port: 9789
-      calico:
-        interface: "interface=ens192"  # FIXED: Proper Calico format
-        mtu: 1450
-
-    # SSH Configuration
-    ansible_user: chait
-    ansible_ssh_private_key_file: "~/.ssh/id_rsa"
-    ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
-    ansible_become: true
-
-    # API Server Configuration
-    rke2_bind_address: "0.0.0.0"
-    rke2_advertise_address: "{{ ansible_default_ipv4.address }}"
-    
-    # TLS SANs
-    rke2_tls_san:
-      - "{{ ansible_default_ipv4.address }}"
-      - "{{ ansible_hostname }}"
-      - "{{ ansible_fqdn }}"
-      - "{{ rke2_kubernetes_api_server_host }}"  # ADDED: Include API server host
-      - "127.0.0.1"
-      - "localhost"
-
-    # RKE2 Settings
-    rke2_download_kubeconf: true
-    rke2_download_kubeconf_path: "/tmp"
-
   children:
-    masters:
+    servers:
       hosts:
-        master-01:
+        kube-it-control-001:
           ansible_host: 10.31.44.100
-          rke2_node_ip: 10.31.44.100
-        master-02:
+          node_ip: 10.31.44.100
+        kube-it-control-002:
           ansible_host: 10.31.44.101
-          rke2_node_ip: 10.31.44.101
-        master-03:
+          node_ip: 10.31.44.101
+        kube-it-control-003:
           ansible_host: 10.31.44.102
-          rke2_node_ip: 10.31.44.102
-    workers:
+          node_ip: 10.31.44.102
+    agents:
       hosts:
-        worker-01:
+        kube-it-worker-001:
           ansible_host: 10.31.44.111
-          rke2_node_ip: 10.31.44.111
-        worker-02:
+          node_ip: 10.31.44.111
+        kube-it-worker-002:
           ansible_host: 10.31.44.112
-          rke2_node_ip: 10.31.44.112
+          node_ip: 10.31.44.112
+
     rke2_servers:
       children:
-        masters:
+        servers:
     rke2_agents:
       children:
-        workers:
+        agents:

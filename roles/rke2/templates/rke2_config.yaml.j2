@@ -1,10 +1,16 @@
 ## This is an Ansible managed file, contents will be overwritten ##
-{% if rke2_server is defined and inventory_hostname not in groups['rke2_servers'][:1] %}
-server: {{ rke2_server }}
-{% endif %}
+
+# Token (required for all nodes to join)
 {% if rke2_token is defined and rke2_token | length > 0 %}
 token: {{ rke2_token }}
 {% endif %}
+
+# Server configuration for HA setup
+{% if rke2_server is defined and inventory_hostname not in groups['rke2_servers'][:1] %}
+server: {{ rke2_server }}
+{% endif %}
+
+# Network configuration
 {% if rke2_cluster_cidr is defined %}
 cluster-cidr: "{{ rke2_cluster_cidr }}"
 {% endif %}
@@ -14,15 +20,21 @@ service-cidr: "{{ rke2_service_cidr }}"
 {% if rke2_cluster_dns is defined %}
 cluster-dns: "{{ rke2_cluster_dns }}"
 {% endif %}
+
+# CNI configuration
 {% if rke2_cni is defined %}
 cni: {{ rke2_cni }}
 {% endif %}
+
+# Node network configuration
 {% if rke2_node_ip is defined %}
 node-ip: {{ rke2_node_ip }}
 {% endif %}
 {% if rke2_advertise_address is defined %}
 advertise-address: {{ rke2_advertise_address }}
 {% endif %}
+
+# Kubeconfig permissions
 {% if rke2_write_kubeconfig_mode is defined %}
 write-kubeconfig-mode: "{{ rke2_write_kubeconfig_mode }}"
 {% endif %}
@@ -39,19 +51,29 @@ https-proxy: "{{ https_proxy }}"
 no-proxy: "{{ no_proxy }}"
 {% endif %}
 {% endif %}
+
+# TLS SAN - CRITICAL FOR HA SETUP
 {% if rke2_tls_san is defined %}
 tls-san:
 {% for san in rke2_tls_san %}
   - {{ san }}
 {% endfor %}
+{% elif inventory_hostname in groups['rke2_servers'] %}
+# Auto-generate TLS SANs for all control plane nodes
+tls-san:
+{% for host in groups['rke2_servers'] %}
+  - {{ hostvars[host]['ansible_default_ipv4']['address'] }}
+  - {{ host }}
+{% endfor %}
+{% if rke2_api_ip is defined %}
+  - {{ rke2_api_ip }}
+{% endif %}
 {% endif %}
 
-# Node labels based on role (servers vs agents)
+# Node labels
 {% if inventory_hostname in groups['rke2_servers'] %}
 # Control plane node labels
 node-label:
-  - "node-role.kubernetes.io/control-plane=true"
-  - "node-role.kubernetes.io/master=true"
   - "node.kubernetes.io/instance-type=control-plane"
   - "cluster-role=server"
 {% if rke2_server_labels_extra is defined and rke2_server_labels_extra | length > 0 %}
@@ -70,10 +92,10 @@ node-taint:
 {% endfor %}
 {% endif %}
 {% endif %}
+
 {% elif inventory_hostname in groups['rke2_agents'] %}
 # Worker node labels
 node-label:
-  - "node-role.kubernetes.io/worker=true"
   - "node.kubernetes.io/instance-type=worker"
   - "cluster-role=agent"
 {% if rke2_agent_labels_extra is defined and rke2_agent_labels_extra | length > 0 %}
@@ -88,67 +110,5 @@ node-taint:
 {% for taint in rke2_agent_taints_extra %}
   - "{{ taint }}"
 {% endfor %}
-{% endif %}
-{% endif %}
-
-{% if (rke2_cni == "canal" and rke2_canal_config is defined) or rke2_coredns_forwarders is defined %}
-helm-chart-values:
-{% if rke2_cni == "canal" and rke2_canal_config is defined %}
-  - name: rke2-canal
-    namespace: kube-system
-    values:
-      flannel:
-        iface: "{{ rke2_canal_config.flannel.interface }}"
-        backend: "vxlan"
-        vxlanPort: {{ rke2_canal_config.flannel.vxlan_port }}
-      calico:
-        autoDetectionMethod: "{{ rke2_canal_config.calico.interface }}"
-        mtu: {{ rke2_canal_config.calico.mtu }}
-        felixConfiguration:
-          failsafeInboundHostPorts:
-            - protocol: TCP
-              port: 22
-            - protocol: UDP
-              port: 68
-            - protocol: TCP
-              port: 179
-            - protocol: TCP
-              port: 2379
-            - protocol: TCP
-              port: 2380
-            - protocol: TCP
-              port: 6443
-            - protocol: TCP
-              port: 6666
-            - protocol: TCP
-              port: 6667
-            - protocol: UDP
-              port: {{ rke2_canal_config.flannel.vxlan_port }}
-          iptablesFilterAllowAction: "ACCEPT"
-          iptablesMangleAllowAction: "ACCEPT"
-{% elif rke2_cni == "canal" %}
-  - name: rke2-canal
-    namespace: kube-system
-    values:
-      flannel:
-        iface: "{{ rke2_canal_interface | default(ansible_default_ipv4.interface) }}"
-        backend: "vxlan"
-        vxlanPort: {{ rke2_canal_vxlan_port | default(8472) }}
-      calico:
-        autoDetectionMethod: "interface={{ rke2_canal_interface | default(ansible_default_ipv4.interface) }}"
-        mtu: {{ rke2_canal_mtu | default(1450) }}
-{% endif %}
-{% if rke2_coredns_forwarders is defined %}
-  - name: rke2-coredns
-    namespace: kube-system
-    values:
-      servers:
-        - zones:
-          - zone: .
-          plugins:
-          - name: forward
-            parameters: ". {{ rke2_coredns_forwarders | join(' ') }}"
-            configBlock: |-
-              except cluster.local
 {% endif %}
 {% endif %}

@@ -56,6 +56,125 @@
     - rke2_pod_security_admission_config_file_path is defined
     - rke2_pod_security_admission_config_file_path | length > 0
 
+- name: Create RKE2 manifests directory
+  ansible.builtin.file:
+    path: /var/lib/rancher/rke2/server/manifests
+    state: directory
+    mode: '0755'
+  when: inventory_hostname in groups['rke2_servers']
+
+- name: Create CoreDNS HelmChartConfig to override broken injection
+  ansible.builtin.copy:
+    content: |
+      apiVersion: helm.cattle.io/v1
+      kind: HelmChartConfig
+      metadata:
+        name: rke2-coredns
+        namespace: kube-system
+      spec:
+        valuesContent: |-
+          service:
+            clusterIP: {{ rke2_cluster_dns }}
+          servers:
+            - zones:
+              - zone: .
+              port: 53
+              plugins:
+              - name: errors
+              - name: health
+                configBlock: |-
+                  lameduck 10s
+              - name: ready
+              - name: kubernetes
+                parameters: cluster.local in-addr.arpa ip6.arpa
+                configBlock: |-
+                  pods insecure
+                  fallthrough in-addr.arpa ip6.arpa
+                  ttl 30
+              - name: prometheus
+                parameters: 0.0.0.0:9153
+              - name: forward
+                parameters: ". {{ rke2_coredns_forwarders | join(' ') }}"
+              - name: cache
+                parameters: 30
+              - name: loop
+              - name: reload
+              - name: loadbalance
+    dest: /var/lib/rancher/rke2/server/manifests/rke2-coredns-config.yaml
+    owner: root
+    group: root
+    mode: '0644'
+  when:
+    - inventory_hostname in groups['rke2_servers']
+    - rke2_coredns_forwarders is defined
+    - rke2_coredns_forwarders | length > 0
+  tags:
+    - rke2-coredns
+
+# Complete Ansible task for Canal HelmChartConfig with all advanced settings
+
+- name: Create Canal HelmChartConfig with correct syntax
+  ansible.builtin.copy:
+    content: |
+      apiVersion: helm.cattle.io/v1
+      kind: HelmChartConfig
+      metadata:
+        name: rke2-canal
+        namespace: kube-system
+      spec:
+        valuesContent: |-
+          flannel:
+            backend: "vxlan"
+            iface: "ens192"
+            backendPort: "9345"
+          calico:
+            calicoNetwork:
+              mtu: "{{ rke2_canal_mtu | default(1450) }}""
+      {% if rke2_cluster_cidr is defined %}
+              ipPools:
+                - cidr: "{{ rke2_cluster_cidr }}"
+                  encapsulation: None
+                  natOutgoing: Enabled
+                  nodeSelector: all()
+      {% endif %}
+            nodeAddressAutodetectionV4:
+              interface: "{{ rke2_canal_interface | default(ansible_default_ipv4.interface) }}"
+      {% if rke2_service_cidr is defined %}
+            serviceCIDRs:
+              - "{{ rke2_service_cidr }}"
+      {% endif %}
+            felix:
+              failsafeInboundHostPorts:
+                - protocol: tcp
+                  port: 22
+                - protocol: udp
+                  port: 68
+                - protocol: tcp
+                  port: 179
+                - protocol: tcp
+                  port: 2379
+                - protocol: tcp
+                  port: 2380
+                - protocol: tcp
+                  port: 6443
+                - protocol: tcp
+                  port: 6666
+                - protocol: tcp
+                  port: 6667
+                - protocol: udp
+                  port: "{{ rke2_canal_vxlan_port | default(8472) }}"
+              iptablesFilterAllowAction: "ACCEPT"
+              iptablesMangleAllowAction: "ACCEPT"
+    dest: /var/lib/rancher/rke2/server/manifests/rke2-canal-config.yaml
+    owner: root
+    group: root
+    mode: '0644'
+  when:
+    - inventory_hostname in groups['rke2_servers']
+    - rke2_cni == "canal"
+  tags:
+    - rke2-canal
+
 - name: Generate RKE2 main configuration using template
   ansible.builtin.template:
     src: rke2_config.yaml.j2
@@ -88,10 +207,54 @@
   changed_when: false
   failed_when: yaml_validation.rc != 0
 
-- name: Show RKE2 configuration validation results
+- name: Add iptables rke2_cluster_dns
+  ansible.builtin.include_tasks: "iptables_rules.yml"
+
+- name: Show immediate diagnostics results
   ansible.builtin.debug:
-    var: yaml_validation.stdout_lines
-  when: ansible_verbosity >= 1
+    msg: "{{ immediate_diagnostics.stdout_lines }}"
+  when:
+    - rke2_cni == "canal"
+    - immediate_diagnostics is defined
+  tags:
+    - rke2-debug
+
+# Test standard port vs custom port
+- name: Compare standard vs custom VXLAN port connectivity
+  ansible.builtin.shell: |
+    echo "=== PORT COMPARISON TEST ==="
+    echo "Testing both standard (8472) and custom ({{ rke2_canal_vxlan_port | default(8472) }}) ports"
+
+    {% for host in groups['all'] %}
+    {% if hostvars[host]['ansible_default_ipv4']['address'] != ansible_default_ipv4.address %}
+    TARGET="{{ hostvars[host]['ansible_default_ipv4']['address'] }}"
+    echo "Testing to $TARGET:"
+
+    # Test standard port
+    timeout 2 bash -c "echo 'test' | nc -u $TARGET 8472" >/dev/null 2>&1 && echo "  ✅ Port 8472: Connected" || echo "  ❌ Port 8472: Failed"
+
+    # Test custom port
+    timeout 2 bash -c "echo 'test' | nc -u $TARGET {{ rke2_canal_vxlan_port | default(8472) }}" >/dev/null 2>&1 && echo "  ✅ Port {{ rke2_canal_vxlan_port | default(8472) }}: Connected" || echo "  ❌ Port {{ rke2_canal_vxlan_port | default(8472) }}: Failed"
+
+    break
+    {% endif %}
+    {% endfor %}
+
+    echo -e "\nRECOMMENDATION:"
+    echo "If port 8472 works but {{ rke2_canal_vxlan_port | default(8472) }} doesn't, switch back to standard port"
+  register: port_comparison
+  when: rke2_cni == "canal"
+  tags:
+    - rke2-debug
+
+- name: Show port comparison results
+  ansible.builtin.debug:
+    msg: "{{ port_comparison.stdout_lines }}"
+  when:
+    - rke2_cni == "canal"
+    - port_comparison is defined
+  tags:
+    - rke2-debug
 
 - name: Display RKE2 configuration summary
   ansible.builtin.debug:
@@ -99,9 +262,9 @@
       RKE2 Configuration Summary:
       - Node Type: {{ 'Server' if inventory_hostname in groups['rke2_servers'] else 'Agent' }}
       - Node IP: {{ rke2_node_ip | default(ansible_default_ipv4.address) }}
-      - CNI: {{ rke2_cni | default('canal') }}
-      - Cluster CIDR: {{ rke2_cluster_cidr | default('172.16.0.0/16') }}
-      - Service CIDR: {{ rke2_service_cidr | default('172.17.0.0/16') }}
+      - CNI: {{ rke2_cni | default('notSet') }}
+      - Cluster CIDR: {{ rke2_cluster_cidr | default('notSet') }}
+      - Service CIDR: {{ rke2_service_cidr | default('notSet') }}
       {% if rke2_coredns_forwarders is defined %}
       - DNS Forwarders: {{ rke2_coredns_forwarders | join(', ') }}
       {% endif %}
@@ -120,13 +283,12 @@
   delay: 10
   until: rke2_service_start is succeeded
 
-- name: Wait for RKE2 to be ready
+- name: Check if Kubernetes API port is open
   ansible.builtin.wait_for:
     port: 6443
     host: "{{ ansible_default_ipv4.address }}"
-    delay: 30
     timeout: 300
-  when: inventory_hostname in groups['rke2_servers']
+  when: inventory_hostname in groups['rke2_servers'][0]
 
 - name: Verify RKE2 cluster status
   ansible.builtin.shell: |
@@ -135,12 +297,4 @@
   register: cluster_status
   changed_when: false
   failed_when: false
-  when: inventory_hostname in groups['rke2_servers'][0:1]
-
-- name: Show cluster status
-  ansible.builtin.debug:
-    var: cluster_status.stdout_lines
-  when:
-    - cluster_status is defined
-    - cluster_status.rc == 0
-    - ansible_verbosity >= 1
+  when: inventory_hostname in groups['rke2_servers'][0]

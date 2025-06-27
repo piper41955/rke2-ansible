@@ -4,14 +4,6 @@
     name:
       - python3-kubernetes
 
-- name: Create RKE2 manifests directory
-  ansible.builtin.file:
-    path: /var/lib/rancher/rke2/server/manifests
-    state: directory
-    mode: '0755'
-  when: inventory_hostname in groups['rke2_servers']
-
-
 - name: Deploy Cilium HelmChartConfig
   ansible.builtin.template:
     src: rke2-cilium-config.yaml.j2
