@@ -111,8 +111,6 @@
   tags:
     - rke2-coredns
 
-# Complete Ansible task for Canal HelmChartConfig with all advanced settings
-
 - name: Create Canal HelmChartConfig with correct syntax
   ansible.builtin.copy:
     content: |
@@ -125,11 +123,11 @@
         valuesContent: |-
           flannel:
             backend: "vxlan"
-            iface: "ens192"
-            backendPort: "9345"
+            iface: "{{ rke2_canal_interface | default(ansible_default_ipv4.interface) }}"
+            backendPort: {{ rke2_canal_vxlan_port | default(8472) }}
           calico:
             calicoNetwork:
-              mtu: "{{ rke2_canal_mtu | default(1450) }}""
+              mtu: {{ rke2_canal_mtu | default(1450) }}
       {% if rke2_cluster_cidr is defined %}
               ipPools:
                 - cidr: "{{ rke2_cluster_cidr }}"
@@ -162,7 +160,7 @@
                 - protocol: tcp
                   port: 6667
                 - protocol: udp
-                  port: "{{ rke2_canal_vxlan_port | default(8472) }}"
+                  port: {{ rke2_canal_vxlan_port | default(8472) }}
               iptablesFilterAllowAction: "ACCEPT"
               iptablesMangleAllowAction: "ACCEPT"
     dest: /var/lib/rancher/rke2/server/manifests/rke2-canal-config.yaml
@@ -184,6 +182,18 @@
     group: root
     backup: true
   notify: "Restart {{ service_name }}"
+
+- name: Add token and server config
+  ansible.builtin.blockinfile:
+    path: /etc/rancher/rke2/config.yaml
+    block: |
+      server: {{ rke2_server }}
+      token: {{ rke2_token }}
+    marker: "# {mark} ANSIBLE MANAGED BLOCK"
+  when:
+    - rke2_token is defined
+    - rke2_server is defined
+    - inventory_hostname not in groups['rke2_servers'][:1]
 
 - name: Validate RKE2 configuration syntax
   ansible.builtin.shell: |
