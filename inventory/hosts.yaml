@@ -1,56 +1,62 @@
 all:
   vars:
+    # Cluster API and Token Configuration
     rke2_kubernetes_api_server_host: "10.31.44.100"
+    rke2_server: "https://{{ rke2_kubernetes_api_server_host }}:9345"  # FIXED: Use port 9345 for registration
+    rke2_token: "initialtoken"
+    
+    # Service name determination
     service_name: "{{ 'rke2-server' if inventory_hostname in groups['rke2_servers'] else 'rke2-agent' }}"
-    rke2_server: "https://{{ rke2_kubernetes_api_server_host }}:6443"
 
-    # DNS
+    # DNS Configuration
     rke2_coredns_forwarders:
       - "10.31.10.10"
       - "10.31.10.11"
 
-    # Proxy
+    # Proxy Configuration
     http_proxy: "http://10.31.10.15:3128"
     https_proxy: "http://10.31.10.15:3128"
     no_proxy: "localhost,.jgsdev.xyz,.jgs.app,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,.svc,.cluster.local,{{ ansible_default_ipv4.network }}/{{ ansible_default_ipv4.netmask }}"
 
-    # Network configuration
+    # Network Configuration
     rke2_cluster_cidr: "172.16.0.0/16"
     rke2_service_cidr: "172.17.0.0/16"
     rke2_cluster_dns: "172.17.0.10"
-    cluster-cidr: "{{ rke2_cluster_cidr }}"
-    service-cidr: "{{ rke2_service_cidr }}"
     rke2_cni: "canal"
     rke2_write_kubeconfig_mode: "0644"
 
-    # Optional: Advanced CNI configuration
+    # FIXED: Canal CNI Configuration
     rke2_canal_config:
       flannel:
         interface: "ens192"
         vxlan_port: 9789
       calico:
+        interface: "interface=ens192"  # FIXED: Proper Calico format
         mtu: 1450
-        interface: "ens192"
 
-    # SSH configuration
+    # SSH Configuration
     ansible_user: chait
     ansible_ssh_private_key_file: "~/.ssh/id_rsa"
     ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
-    ansible_become: true  # ADDED: Required for RKE2 installation
-    # API Server binding configuration
-    rke2_bind_address: "0.0.0.0"  # Bind to all interfaces
-    rke2_advertise_address: "{{ ansible_default_ipv4.address }}"  # Advertise actual IP
-    # TLS SANs - important for external access
+    ansible_become: true
+
+    # API Server Configuration
+    rke2_bind_address: "0.0.0.0"
+    rke2_advertise_address: "{{ ansible_default_ipv4.address }}"
+    
+    # TLS SANs
     rke2_tls_san:
       - "{{ ansible_default_ipv4.address }}"
       - "{{ ansible_hostname }}"
       - "{{ ansible_fqdn }}"
-      - "0.0.0.0"
+      - "{{ rke2_kubernetes_api_server_host }}"  # ADDED: Include API server host
       - "127.0.0.1"
       - "localhost"
-    # ADDED: RKE2 specific settings
+
+    # RKE2 Settings
     rke2_download_kubeconf: true
     rke2_download_kubeconf_path: "/tmp"
+
   children:
     masters:
       hosts:
@@ -73,7 +79,7 @@ all:
           rke2_node_ip: 10.31.44.112
     rke2_servers:
       children:
-        masters:  # Masters are the RKE2 servers
+        masters:
     rke2_agents:
       children:
-        workers:  # Workers are the RKE2 agents
+        workers:

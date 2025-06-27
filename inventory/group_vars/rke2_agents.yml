@@ -1,0 +1,13 @@
+---
+# Agent-specific configuration
+rke2_agent_labels_extra:
+  - "workload-type=application"
+  - "node-class=worker"
+
+rke2_agent_taints_extra: []
+
+# Proxy environment for agents
+rke2_environment:
+  HTTP_PROXY: "{{ http_proxy }}"
+  HTTPS_PROXY: "{{ https_proxy }}"
+  NO_PROXY: "{{ no_proxy }}"

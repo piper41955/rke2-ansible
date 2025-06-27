@@ -1,0 +1,14 @@
+---
+# Server-specific configuration
+rke2_server_taint_control_plane: true
+rke2_server_labels_extra:
+  - "environment=production"
+  - "datacenter=jgsdev"
+
+rke2_server_taints_extra: []
+
+# Proxy environment for servers
+rke2_environment:
+  HTTP_PROXY: "{{ http_proxy }}"
+  HTTPS_PROXY: "{{ https_proxy }}"
+  NO_PROXY: "{{ no_proxy }}"

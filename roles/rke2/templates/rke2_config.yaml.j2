@@ -26,12 +26,71 @@ advertise-address: {{ rke2_advertise_address }}
 {% if rke2_write_kubeconfig_mode is defined %}
 write-kubeconfig-mode: "{{ rke2_write_kubeconfig_mode }}"
 {% endif %}
+
+# Proxy configuration
+{% if http_proxy is defined or https_proxy is defined %}
+{% if http_proxy is defined %}
+http-proxy: "{{ http_proxy }}"
+{% endif %}
+{% if https_proxy is defined %}
+https-proxy: "{{ https_proxy }}"
+{% endif %}
+{% if no_proxy is defined %}
+no-proxy: "{{ no_proxy }}"
+{% endif %}
+{% endif %}
 {% if rke2_tls_san is defined %}
 tls-san:
 {% for san in rke2_tls_san %}
   - {{ san }}
 {% endfor %}
 {% endif %}
+
+# Node labels based on role (servers vs agents)
+{% if inventory_hostname in groups['rke2_servers'] %}
+# Control plane node labels
+node-label:
+  - "node-role.kubernetes.io/control-plane=true"
+  - "node-role.kubernetes.io/master=true"
+  - "node.kubernetes.io/instance-type=control-plane"
+  - "cluster-role=server"
+{% if rke2_server_labels_extra is defined and rke2_server_labels_extra | length > 0 %}
+{% for label in rke2_server_labels_extra %}
+  - "{{ label }}"
+{% endfor %}
+{% endif %}
+
+# Control plane node taints (prevent workload scheduling on masters)
+{% if rke2_server_taint_control_plane is defined and rke2_server_taint_control_plane %}
+node-taint:
+  - "node-role.kubernetes.io/control-plane=true:NoSchedule"
+{% if rke2_server_taints_extra is defined and rke2_server_taints_extra | length > 0 %}
+{% for taint in rke2_server_taints_extra %}
+  - "{{ taint }}"
+{% endfor %}
+{% endif %}
+{% endif %}
+{% elif inventory_hostname in groups['rke2_agents'] %}
+# Worker node labels
+node-label:
+  - "node-role.kubernetes.io/worker=true"
+  - "node.kubernetes.io/instance-type=worker"
+  - "cluster-role=agent"
+{% if rke2_agent_labels_extra is defined and rke2_agent_labels_extra | length > 0 %}
+{% for label in rke2_agent_labels_extra %}
+  - "{{ label }}"
+{% endfor %}
+{% endif %}
+
+# Worker node taints (if any)
+{% if rke2_agent_taints_extra is defined and rke2_agent_taints_extra | length > 0 %}
+node-taint:
+{% for taint in rke2_agent_taints_extra %}
+  - "{{ taint }}"
+{% endfor %}
+{% endif %}
+{% endif %}
+
 {% if (rke2_cni == "canal" and rke2_canal_config is defined) or rke2_coredns_forwarders is defined %}
 helm-chart-values:
 {% if rke2_cni == "canal" and rke2_canal_config is defined %}
@@ -67,6 +126,17 @@ helm-chart-values:
               port: {{ rke2_canal_config.flannel.vxlan_port }}
           iptablesFilterAllowAction: "ACCEPT"
           iptablesMangleAllowAction: "ACCEPT"
+{% elif rke2_cni == "canal" %}
+  - name: rke2-canal
+    namespace: kube-system
+    values:
+      flannel:
+        iface: "{{ rke2_canal_interface | default(ansible_default_ipv4.interface) }}"
+        backend: "vxlan"
+        vxlanPort: {{ rke2_canal_vxlan_port | default(8472) }}
+      calico:
+        autoDetectionMethod: "interface={{ rke2_canal_interface | default(ansible_default_ipv4.interface) }}"
+        mtu: {{ rke2_canal_mtu | default(1450) }}
 {% endif %}
 {% if rke2_coredns_forwarders is defined %}
   - name: rke2-coredns
