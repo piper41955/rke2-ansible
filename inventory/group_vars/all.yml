@@ -3,55 +3,48 @@
 rke2_version: "v1.33.1+rke2r1"
 
 # Basic cluster configuration
-rke2_cluster_cidr: "172.16.0.0/16"
-rke2_service_cidr: "172.17.0.0/16"
-rke2_cluster_dns: "172.17.0.10"
+rke2_cluster_cidr: "10.42.0.0/16"
+rke2_service_cidr: "10.43.0.0/16"
+rke2_cluster_dns: "10.43.0.10"
 rke2_host_net: "10.31.44.0/24"
 rke2_cni: "canal"
 rke2_write_kubeconfig_mode: "0644"
+rke2_kubernetes_api_server_host: "{{ kubevip_vip }}"
+cluster_name: "testcluster"
+
+# Kube-vip
+
+kubernetes_service_ip: 10.43.0.1
+kubevip_vip: "10.31.44.100"
+kubevip_interface: "ens192"
+kubevip_cidr: "24"
+kubevip_enable_services: false      # No LoadBalancer services needed
 
 # Node configuration
 rke2_node_ip: "{{ ansible_default_ipv4.address }}"
 rke2_advertise_address: "{{ ansible_default_ipv4.address }}"
 
-# FIXED: Server URL for joining nodes - use IP address not hostname
-rke2_server: "https://{{ hostvars[groups['rke2_servers'][0]]['ansible_default_ipv4']['address'] }}:9345"
+# rke2_server: "https://{{ hostvars[groups['rke2_servers'][0]]['ansible_default_ipv4']['address'] }}:9345"
+rke2_server: "{{ kubevip_vip }}"
 
 # Proxy configuration
 http_proxy: "http://10.31.10.15:3128"
 https_proxy: "http://10.31.10.15:3128"
-# FIXED: Updated no_proxy to include your cluster networks and proper CIDR notation
 no_proxy: "localhost,.jgsdev.xyz,.jgs.app,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,.svc,.cluster.local,10.31.44.0/24,172.16.0.0/16,172.17.0.0/16"
 
-# FIXED: TLS SANs - include all control plane nodes for HA
 rke2_tls_san:
-  # Current node
-  - "{{ ansible_default_ipv4.address }}"
-  - "{{ inventory_hostname }}"
-  # Manually list all your control plane nodes (replace with your actual IPs/hostnames)
-  - "10.31.44.100"  # kube-it-control-001
-  - "10.31.44.101"  # kube-it-control-002
-  - "10.31.44.102"  # kube-it-control-003
-  - "kube-it-control-001"
-  - "kube-it-control-002"
-  - "kube-it-control-003"
-  # Standard entries
-  - "127.0.0.1"
-  - "localhost"
-  # Add load balancer IP if you have one
-  # - "your-lb-ip-here"
+  - "{{ kubevip_vip }}"
 
 # Control plane node taint
 rke2_server_taint_control_plane: true
 
-# FIXED: Labels - different labels for different node types
 rke2_server_labels_extra:
   - "environment=production"
   - "datacenter=jgsdev"
   - "node-type=control-plane"
 
 rke2_agent_labels_extra:
-  - "environment=production"  # FIXED: Should match your environment
+  - "environment=production"
   - "datacenter=jgsdev"
   - "node-type=worker"
 
@@ -60,16 +53,14 @@ rke2_canal_interface: "ens192"
 rke2_canal_vxlan_port: 9345
 rke2_canal_mtu: 1450
 
-# FIXED: CoreDNS forwarders - your internal DNS servers
+# DNS
 rke2_coredns_forwarders:
   - "10.31.10.10"
   - "10.31.10.11"
 
-# ADDED: Additional recommended settings for production
-# Disable built-in load balancer if using external LB
 rke2_disable_cloud_controller: false
 
-# ADDED: Additional networking settings for proxy environment
+# Proxy - May no longer be used
 rke2_environment_variables:
   HTTP_PROXY: "{{ http_proxy }}"
   HTTPS_PROXY: "{{ https_proxy }}"

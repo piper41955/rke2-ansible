@@ -1,0 +1,221 @@
+---
+- name: Add kubernetes service resolution to /etc/hosts for kube-vip bootstrap
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    line: "{{ item }}"
+    state: present
+    create: true
+  loop:
+    - "{{ ansible_default_ipv4.address }} kubernetes"
+    - "{{ ansible_default_ipv4.address }} kubernetes.default"
+    - "{{ ansible_default_ipv4.address }} kubernetes.default.svc"
+    - "{{ ansible_default_ipv4.address }} kubernetes.default.svc.cluster.local"
+  when: inventory_hostname in groups['rke2_servers']
+  tags: hosts
+
+- name: Deploy kube-vip RBAC manifest
+  ansible.builtin.copy:
+    dest: /var/lib/rancher/rke2/server/manifests/kube-vip-rbac.yaml
+    mode: '0644'
+    content: |
+      apiVersion: v1
+      kind: ServiceAccount
+      metadata:
+        name: kube-vip
+        namespace: kube-system
+      ---
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRole
+      metadata:
+        annotations:
+          rbac.authorization.kubernetes.io/autoupdate: "true"
+        name: system:kube-vip-role
+      rules:
+        - apiGroups: [""]
+          resources: ["services", "services/status", "nodes", "endpoints"]
+          verbs: ["list","get","watch", "update"]
+        - apiGroups: ["coordination.k8s.io"]
+          resources: ["leases"]
+          verbs: ["list", "get", "watch", "update", "create"]
+      ---
+      kind: ClusterRoleBinding
+      apiVersion: rbac.authorization.k8s.io/v1
+      metadata:
+        name: system:kube-vip-binding
+      roleRef:
+        apiGroup: rbac.authorization.k8s.io
+        kind: ClusterRole
+        name: system:kube-vip-role
+      subjects:
+      - kind: ServiceAccount
+        name: kube-vip
+        namespace: kube-system
+  when: inventory_hostname == groups['rke2_servers'][0]
+
+- name: Deploy kube-vip DaemonSet manifest
+  ansible.builtin.copy:
+    dest: /var/lib/rancher/rke2/server/manifests/kube-vip-daemonset.yaml
+    mode: '0644'
+    content: |
+      apiVersion: apps/v1
+      kind: DaemonSet
+      metadata:
+        name: kube-vip-ds
+        namespace: kube-system
+      spec:
+        selector:
+          matchLabels:
+            name: kube-vip-ds
+        template:
+          metadata:
+            labels:
+              name: kube-vip-ds
+          spec:
+            affinity:
+              nodeAffinity:
+                requiredDuringSchedulingIgnoredDuringExecution:
+                  nodeSelectorTerms:
+                  - matchExpressions:
+                    - key: node-role.kubernetes.io/master
+                      operator: Exists
+                  - matchExpressions:
+                    - key: node-role.kubernetes.io/control-plane
+                      operator: Exists
+            containers:
+            - args:
+              - manager
+              env:
+              - name: vip_arp
+                value: "true"
+              - name: port
+                value: "6443"
+              - name: vip_interface
+                value: {{ kubevip_interface | default('eth0') }}
+              - name: vip_cidr
+                value: "{{ kubevip_cidr | default('24') }}"
+              - name: cp_enable
+                value: "true"
+              - name: cp_namespace
+                value: kube-system
+              - name: vip_ddns
+                value: "false"
+              - name: svc_enable
+                value: "false"
+              - name: vip_leaderelection
+                value: "true"
+              - name: vip_leaseduration
+                value: "5"
+              - name: vip_renewdeadline
+                value: "3"
+              - name: vip_retryperiod
+                value: "1"
+              - name: address
+                value: {{ kubevip_vip | default('192.168.1.100') }}
+              - name: vip_kubernetesservicehost
+                value: "{{ kubernetes_service_ip | default('10.43.0.1') }}"
+              - name: vip_kubernetesserviceport
+                value: "443"
+              image: piper41955/kube-vip:{{ kubevip_version | default('v0.9.2') }}
+              imagePullPolicy: Always
+              name: kube-vip
+              resources: {}
+              securityContext:
+                capabilities:
+                  add:
+                  - NET_ADMIN
+                  - NET_RAW
+                  - SYS_TIME
+              volumeMounts:
+              - mountPath: /etc/kubernetes/admin.conf
+                name: kubeconfig
+              - mountPath: /etc/hosts
+                name: etchosts
+            dnsPolicy: "ClusterFirstWithHostNet"
+            hostNetwork: true
+            serviceAccountName: kube-vip
+            tolerations:
+            - effect: NoSchedule
+              operator: Exists
+            - effect: NoExecute
+              operator: Exists
+            volumes:
+            - hostPath:
+                path: /etc/rancher/rke2/rke2.yaml
+              name: kubeconfig
+            - hostPath:
+                path: /etc/hosts
+              name: etchosts
+        updateStrategy: {}
+  when: inventory_hostname == groups['rke2_servers'][0]
+  tags: kubevip
+
+- name: Wait for kube-vip pods to be ready
+  ansible.builtin.shell: /var/lib/rancher/rke2/bin/kubectl get pods -n kube-system -l name=kube-vip-ds --no-headers | grep -c Running
+  register: kubevip_pods_running
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+  until: kubevip_pods_running.stdout|int > 0
+  retries: 30
+  delay: 10
+  when: inventory_hostname == groups['rke2_servers'][0]
+  tags: kubevip
+
+- name: Check if VIP is active
+  ansible.builtin.wait_for:
+    host: "{{ kubevip_vip | default('192.168.1.100') }}"
+    port: 6443
+    timeout: 60
+  when: inventory_hostname == groups['rke2_servers'][0]
+  tags: kubevip
+
+- name: Update kubernetes service endpoints to point to kube-vip VIP
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+  ansible.builtin.shell: |
+    /var/lib/rancher/rke2/bin/kubectl patch endpoints kubernetes -p '{
+      "subsets": [{
+        "addresses": [{"ip": "{{ kubevip_vip | default('192.168.1.100') }}"}],
+        "ports": [{"name": "https", "port": 6443, "protocol": "TCP"}]
+      }]
+    }'
+  when:
+    - inventory_hostname == groups['rke2_servers'][0]
+    - kubevip_update_endpoints | default(true) | bool
+  tags: endpoints
+
+- name: Update /etc/hosts to point all kubernetes entries to VIP
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: '^{{ ansible_default_ipv4.address }}\s+{{ item }}$'
+    line: "{{ kubevip_vip | default('192.168.1.100') }} {{ item }}"
+    state: present
+  loop:
+    - "kubernetes"
+    - "kubernetes.default"
+    - "kubernetes.default.svc"
+    - "kubernetes.default.svc.cluster.local"
+  when:
+    - inventory_hostname in groups['rke2_servers']
+    - kubevip_update_hosts_to_vip | default(true) | bool
+  tags: hosts
+
+- name: Display kube-vip logs
+  ansible.builtin.debug:
+    var: kubevip_logs.log_lines
+  when:
+    - inventory_hostname == groups['rke2_servers'][0]
+    - kubevip_logs is defined
+
+- name: Debug - Check VIP connectivity
+  ansible.builtin.wait_for:
+    host: "{{ kubevip_vip | default('192.168.1.100') }}"
+    port: 6443
+    timeout: 5
+  ignore_errors: true
+  register: vip_check
+  when: inventory_hostname == groups['rke2_servers'][0]
+
+- name: Display VIP connectivity status
+  ansible.builtin.debug:
+    msg: "VIP {{ kubevip_vip | default('192.168.1.100') }}:6443 is {{ 'reachable' if vip_check is succeeded else 'unreachable' }}"
+  when: inventory_hostname == groups['rke2_servers'][0]

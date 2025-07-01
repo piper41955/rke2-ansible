@@ -17,7 +17,7 @@
     block: "{{ rke2_config | to_nice_yaml(indent=0) }}"
     create: true
     mode: "0640"
-  when: 
+  when:
     - rke2_config is defined
     - rke2_config | length > 0
     - rke2_config != {}

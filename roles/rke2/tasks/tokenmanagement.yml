@@ -1,0 +1,63 @@
+---
+- name: RKE2 Token Management
+  block:
+    - name: Create tokens directory
+      ansible.builtin.file:
+        path: "{{ playbook_dir }}/tokens"
+        state: directory
+      delegate_to: localhost
+      run_once: true
+
+    - name: Check if cluster token exists
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/tokens/{{ cluster_name | default('default') }}_token"
+      delegate_to: localhost
+      register: token_file
+      run_once: true
+
+    - name: Generate new cluster token
+      ansible.builtin.copy:
+        content: "{{ lookup('password', '/dev/null chars=ascii_letters,digits length=64') }}"
+        dest: "{{ playbook_dir }}/tokens/{{ cluster_name | default('default') }}_token"
+        mode: '0600'
+      delegate_to: localhost
+      run_once: true
+      when: not token_file.stat.exists
+
+    - name: Read cluster token
+      ansible.builtin.slurp:
+        src: "{{ playbook_dir }}/tokens/{{ cluster_name | default('default') }}_token"
+      delegate_to: localhost
+      register: cluster_token_content
+      run_once: true
+
+    - name: Set cluster token fact
+      ansible.builtin.set_fact:
+        rke2_token: "{{ cluster_token_content.content | b64decode | trim }}"
+
+- name: Pre-deployment Cleanup (when needed)
+  block:
+    - name: Stop RKE2 services
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: stopped
+      loop:
+        - rke2-server
+        - rke2-agent
+      ignore_errors: true
+      when: force_redeploy | default(false) | bool
+
+    - name: Clean RKE2 data directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /var/lib/rancher/rke2/server/db
+        - /var/lib/rancher/rke2/agent
+        - /etc/rancher/rke2/config.yaml
+      when: force_redeploy | default(false) | bool
+
+    - name: Wait for cleanup to complete
+      ansible.builtin.pause:
+        seconds: 10
+      when: force_redeploy | default(false) | bool

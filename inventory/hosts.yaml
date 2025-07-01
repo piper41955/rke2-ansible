@@ -3,8 +3,8 @@ all:
     servers:
       hosts:
         kube-it-control-001:
-          ansible_host: 10.31.44.100
-          node_ip: 10.31.44.100
+          ansible_host: 10.31.44.103
+          node_ip: 10.31.44.103
         kube-it-control-002:
           ansible_host: 10.31.44.101
           node_ip: 10.31.44.101

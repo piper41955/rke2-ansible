@@ -6,3 +6,7 @@ configs:
   "registry-1.docker.io":
     tls:
       insecure_skip_verify: false
+    timeout:
+      dial: 10s
+      header: 10s
+      response_header: 10s

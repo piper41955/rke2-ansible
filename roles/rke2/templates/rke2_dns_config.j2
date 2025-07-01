@@ -30,6 +30,7 @@ spec:
       - name: forward
         parameters: . {{ rke2_coredns_config.forward_to | join(' ') }}
         configBlock: |-
+          except {{ rke2_cluster_domain | default('cluster.local') }}
 {% if rke2_coredns_config.forward_policy is defined %}
           policy {{ rke2_coredns_config.forward_policy }}
 {% endif %}

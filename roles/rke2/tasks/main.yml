@@ -74,6 +74,14 @@
 - name: Configure CNI
   ansible.builtin.include_tasks: configure-cni.yml
 
+- name: Add registry definition
+  ansible.builtin.template:
+    src: registries.yaml.j2
+    dest: /etc/rancher/rke2/registries.yaml
+    mode: '0644'
+    owner: root
+    group: root
+
 - name: Include task file add_manifest_addons.yml
   ansible.builtin.include_tasks: add_manifest_addons.yml
   vars:
@@ -87,12 +95,18 @@
 - name: Configure Proxy
   ansible.builtin.include_tasks: proxy.yml
 
+- name: Configure Token Management
+  ansible.builtin.include_tasks: tokenmanagement.yml
+
 # is the ready_servers array is empty, we assume it's a new cluster and use the first server in groups['rke2_servers']
 - name: Start the first rke2 node
   ansible.builtin.include_tasks: first_server.yml
   when:
     - inventory_hostname in groups['rke2_servers'][0]
     - ready_servers | length == 0
+
+- name: Add Kube-vip add_manifest_addons.yml
+  ansible.builtin.include_tasks: kubevip.yml
 
 - name: Save_generated_token.yml
   ansible.builtin.include_tasks: save_generated_token.yml
@@ -126,11 +140,3 @@
     - rke2_manifest_config_post_run_directory is defined
     - rke2_manifest_config_post_run_directory | length > 0
     - inventory_hostname in groups['rke2_servers'][0]
-
-- name: Add registry definition
-  ansible.builtin.template:
-    src: registries.yaml.j2
-    dest: /etc/rancher/rke2/registries.yaml
-    mode: '0644'
-    owner: root
-    group: root
